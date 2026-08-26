@@ -1,12 +1,9 @@
 const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-
-if (process.env.NODE_ENV === "production" && !configuredApiUrl) {
-  throw new Error(
-    "NEXT_PUBLIC_API_URL precisa apontar para o backend publicado antes do deploy.",
-  );
-}
-
-const rawApiUrl = configuredApiUrl ?? "http://localhost:4000";
+const defaultApiUrl =
+  process.env.NODE_ENV === "production"
+    ? "https://meu-saas-backend-production.up.railway.app"
+    : "http://localhost:4000";
+const rawApiUrl = configuredApiUrl || defaultApiUrl;
 export const API_BASE_URL = (
   /^https?:\/\//i.test(rawApiUrl)
     ? rawApiUrl
