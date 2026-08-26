@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { Loader2 } from "lucide-react";
-import { API_BASE_URL } from "@/lib/api-config";
+import { API_BASE_URL, apiAssetUrl } from "@/lib/api-config";
 
 // 🚀 1. INTERFACE CORRIGIDA (Separamos Módulos de Aulas)
 interface Course {
@@ -300,7 +300,7 @@ function CourseCard({
   isMain?: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
-  const hasValidUrl = curso.coverUrl && curso.coverUrl.startsWith("http");
+  const hasValidUrl = Boolean(curso.coverUrl?.trim());
 
   const getButtonText = () => {
     if (curso.status === "concluido") return "Rever Curso";
@@ -315,7 +315,7 @@ function CourseCard({
       >
         {!imgError && hasValidUrl ? (
           <img
-            src={curso.coverUrl}
+            src={apiAssetUrl(curso.coverUrl)}
             alt={curso.title}
             onError={() => setImgError(true)}
             // 🚀 AJUSTE AQUI: Adicionado "object-top" para manter o rosto sempre visível e não cortar a testa!

@@ -21,7 +21,7 @@ import {
   MessageCircle,
   Mail,
 } from "lucide-react";
-import { API_BASE_URL, apiUrl } from "@/lib/api-config";
+import { API_BASE_URL, apiAssetUrl, apiUrl } from "@/lib/api-config";
 
 interface Attachment {
   id: string;
@@ -457,12 +457,32 @@ export default function TelaDeAula() {
   };
 
   const isNativeVideo = (url: string) =>
-    url
-      ? url.toLowerCase().includes(".mp4") ||
-        url.toLowerCase().includes(".webm")
-      : false;
+    Boolean(
+      url &&
+        (/\/uploads\//i.test(url) ||
+          /\.(mp4|webm|ogg|mov|m4v)(?:[?#]|$)/i.test(url)),
+    );
   const getEmbedUrl = (url: string) => {
-    /*... (igual) ...*/ return url;
+    try {
+      const parsed = new URL(url);
+      const hostname = parsed.hostname.replace(/^www\./, "");
+      if (hostname === "youtu.be") {
+        return `https://www.youtube.com/embed/${parsed.pathname.slice(1)}`;
+      }
+      if (hostname.endsWith("youtube.com")) {
+        const videoId =
+          parsed.searchParams.get("v") ||
+          parsed.pathname.match(/^\/(?:shorts|embed)\/([^/]+)/)?.[1];
+        if (videoId) return `https://www.youtube.com/embed/${videoId}`;
+      }
+      if (hostname.endsWith("vimeo.com")) {
+        const videoId = parsed.pathname.match(/\/(\d+)(?:$|\/)/)?.[1];
+        if (videoId) return `https://player.vimeo.com/video/${videoId}`;
+      }
+    } catch {
+      return url;
+    }
+    return url;
   };
 
   const handleLessonChange = (mod: Module, less: Lesson) => {
@@ -746,7 +766,7 @@ export default function TelaDeAula() {
                     isNativeVideo(activeLesson.contentUrl) ? (
                       <video
                         ref={videoRef}
-                        src={activeLesson.contentUrl}
+                        src={apiAssetUrl(activeLesson.contentUrl)}
                         controls
                         controlsList="nodownload"
                         onTimeUpdate={handleTimeUpdate}

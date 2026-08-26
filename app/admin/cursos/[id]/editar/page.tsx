@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { apiUrl } from "@/lib/api-config";
+import { apiAssetUrl, apiUrl } from "@/lib/api-config";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -700,7 +700,7 @@ export function CourseEditor({
                   <div>
                     {formData.coverUrl ? (
                       <img
-                        src={formData.coverUrl}
+                        src={apiAssetUrl(formData.coverUrl)}
                         alt="Preview"
                         className="w-full aspect-video object-cover rounded-2xl border border-slate-200 shadow-sm"
                       />
@@ -1084,7 +1084,7 @@ export function CourseEditor({
                                       />
                                       {att.url && (
                                         <a
-                                          href={att.url}
+                                          href={apiAssetUrl(att.url)}
                                           target="_blank"
                                           rel="noopener noreferrer"
                                           className="shrink-0 text-[10px] font-bold text-[#641C32] hover:underline"

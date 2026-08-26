@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
-import { apiUrl } from '@/lib/api-config';
+import { apiAssetUrl, apiUrl } from '@/lib/api-config';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, LayoutGrid, FileText, Image as ImageIcon,
@@ -165,7 +165,7 @@ export default function TelaDeCriacao() {
                       <span className="font-bold text-slate-700">Clique para enviar a imagem</span>
                       <input type="file" accept="image/*" className="hidden" onChange={async (e) => { const upload = await handleFileUpload(e.target.files?.[0]); if (upload) setFormData({...formData, coverUrl: upload.url}); }} />
                     </label>
-                    <div>{formData.coverUrl ? ( <img src={formData.coverUrl} alt="Preview" className="w-full aspect-video object-cover rounded-2xl border border-slate-200 shadow-sm" /> ) : ( <div className="w-full aspect-video bg-slate-100 rounded-2xl border border-slate-200 flex items-center justify-center text-slate-400 text-sm">Sem imagem</div> )}</div>
+                    <div>{formData.coverUrl ? ( <img src={apiAssetUrl(formData.coverUrl)} alt="Preview" className="w-full aspect-video object-cover rounded-2xl border border-slate-200 shadow-sm" /> ) : ( <div className="w-full aspect-video bg-slate-100 rounded-2xl border border-slate-200 flex items-center justify-center text-slate-400 text-sm">Sem imagem</div> )}</div>
                   </div>
               </motion.div>
             )}
@@ -254,7 +254,7 @@ export default function TelaDeCriacao() {
                                 <input type="text" value={att.title} onChange={e => updateAttachment(mod.id, lesson.id, att.id, 'title', e.target.value)} placeholder="Nome" className="w-1/4 text-xs font-medium outline-none px-2 focus:border-b border-[#641C32]" />
                                 <div className="flex-1">
                                   {att.type !== 'LINK' ? (
-                                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2"><Paperclip size={14} className="text-slate-400"/><input type="file" accept={materialAccept(att.type)} onChange={async (e) => { const upload = await handleFileUpload(e.target.files?.[0]); if(upload) applyAttachmentUpload(mod.id, lesson.id, att.id, upload); }} className="min-w-0 flex-1 text-[10px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:font-bold file:bg-[#F5EFEC] file:text-[#641C32]" />{att.url && <a href={att.url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-[10px] font-bold text-[#641C32] hover:underline">Abrir</a>}</div>
+                                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2"><Paperclip size={14} className="text-slate-400"/><input type="file" accept={materialAccept(att.type)} onChange={async (e) => { const upload = await handleFileUpload(e.target.files?.[0]); if(upload) applyAttachmentUpload(mod.id, lesson.id, att.id, upload); }} className="min-w-0 flex-1 text-[10px] text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:font-bold file:bg-[#F5EFEC] file:text-[#641C32]" />{att.url && <a href={apiAssetUrl(att.url)} target="_blank" rel="noopener noreferrer" className="shrink-0 text-[10px] font-bold text-[#641C32] hover:underline">Abrir</a>}</div>
                                   ) : (
                                     <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-3"><LinkIcon size={14} className="text-slate-400 mr-2"/><input type="text" value={att.url} onChange={e => updateAttachment(mod.id, lesson.id, att.id, 'url', e.target.value)} placeholder="https://..." className="w-full text-xs outline-none bg-transparent py-1.5" /></div>
                                   )}

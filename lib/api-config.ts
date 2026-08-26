@@ -12,3 +12,10 @@ export const API_BASE_URL = (
 
 export const apiUrl = (path: string) =>
   `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+
+export const apiAssetUrl = (value: string | null | undefined) => {
+  const url = value?.trim();
+  if (!url) return "";
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  return `${API_BASE_URL}${url.startsWith("/") ? url : `/${url}`}`;
+};
