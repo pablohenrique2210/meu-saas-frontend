@@ -8,6 +8,12 @@ import { useAuth } from "@clerk/nextjs";
 import { AccountButton } from "./AccountButton";
 import BrandLogo from "./BrandLogo";
 
+const navigationLinks = [
+  { name: "Meu Espaço", mobileName: "Espaço", path: "/dashboard" },
+  { name: "Jornadas", mobileName: "Jornadas", path: "/trilhas" },
+  { name: "Para empresas", mobileName: "Empresas", path: "/empresas" },
+];
+
 /**
  * ============================================================
  * LILIAN ARRUDA — IDENTIDADE PREMIUM
@@ -47,15 +53,9 @@ import BrandLogo from "./BrandLogo";
 export function NavigationMenu() {
   const pathname = usePathname();
 
-  const links = [
-    { name: "Meu Espaço", path: "/dashboard" },
-    { name: "Jornadas", path: "/trilhas" },
-    { name: "Para empresas", path: "/empresas" },
-  ];
-
   return (
     <nav className="hidden lg:flex items-center gap-1 p-1.5 bg-white/70 backdrop-blur-xl border border-white shadow-[0_4px_24px_rgba(100,28,50,0.04)] rounded-full">
-      {links.map((link) => {
+      {navigationLinks.map((link) => {
         const isActive =
           pathname === link.path || pathname.startsWith(link.path + "/");
         return (
@@ -80,6 +80,37 @@ export function NavigationMenu() {
             >
               {link.name}
             </span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function MobileNavigationMenu() {
+  const pathname = usePathname();
+
+  return (
+    <nav
+      aria-label="Navegação principal"
+      className="mb-5 grid grid-cols-3 gap-1 rounded-2xl border border-white bg-white/75 p-1.5 shadow-[0_8px_28px_rgba(100,28,50,0.08)] backdrop-blur-xl sm:mb-6 lg:hidden"
+    >
+      {navigationLinks.map((link) => {
+        const isActive =
+          pathname === link.path || pathname.startsWith(`${link.path}/`);
+
+        return (
+          <Link
+            key={link.path}
+            href={link.path}
+            aria-current={isActive ? "page" : undefined}
+            className={`rounded-xl px-2 py-2.5 text-center text-xs font-bold transition-colors sm:text-sm ${
+              isActive
+                ? "bg-[#641C32] text-white shadow-sm"
+                : "text-[#776A6E] hover:bg-[#F5EFEC] hover:text-[#641C32]"
+            }`}
+          >
+            {link.mobileName}
           </Link>
         );
       })}
@@ -123,58 +154,61 @@ export default function LilianArrudaLandingPage() {
         transition={{ duration: 0.6, ease: "easeOut" }}
         className="relative z-40 w-full"
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-5 sm:px-6 sm:py-6">
-          <Link href="/" className="group flex items-center">
-            <BrandLogo
-              priority
-              className="h-[52px] max-w-[180px] sm:h-[62px] sm:max-w-[245px]"
-            />
-          </Link>
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="flex items-center justify-between gap-3 py-5 sm:py-6">
+            <Link href="/" className="group flex items-center">
+              <BrandLogo
+                priority
+                className="h-[52px] max-w-[180px] sm:h-[62px] sm:max-w-[245px]"
+              />
+            </Link>
 
-          <NavigationMenu />
+            <NavigationMenu />
 
-          <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-5">
-            {isLoaded && !isSignedIn && (
-              <>
-                <Link
-                  href="/sign-in"
-                  className="hidden text-sm font-bold text-[#776A6E] transition-colors hover:text-[#241A1D] sm:inline-flex"
-                >
-                  Entrar
-                </Link>
-                <Link href="/sign-up">
-                  <motion.button
-                    whileHover={{ scale: 1.03, y: -1 }}
-                    whileTap={{ scale: 0.97 }}
-                    className="rounded-full bg-[#641C32] px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_24px_-8px_rgba(100,28,50,0.55)] transition-all hover:bg-[#7D2943] sm:px-6"
+            <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-5">
+              {isLoaded && !isSignedIn && (
+                <>
+                  <Link
+                    href="/sign-in"
+                    className="hidden text-sm font-bold text-[#776A6E] transition-colors hover:text-[#241A1D] sm:inline-flex"
                   >
-                    <span className="sm:hidden">Entrar</span>
-                    <span className="hidden sm:inline">
-                      Entrar no meu espaço
-                    </span>
-                  </motion.button>
-                </Link>
-              </>
-            )}
+                    Entrar
+                  </Link>
+                  <Link href="/sign-up">
+                    <motion.button
+                      whileHover={{ scale: 1.03, y: -1 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="rounded-full bg-[#641C32] px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_24px_-8px_rgba(100,28,50,0.55)] transition-all hover:bg-[#7D2943] sm:px-6"
+                    >
+                      <span className="sm:hidden">Entrar</span>
+                      <span className="hidden sm:inline">
+                        Entrar no meu espaço
+                      </span>
+                    </motion.button>
+                  </Link>
+                </>
+              )}
 
-            {isLoaded && isSignedIn && (
-              <>
-                <Link href="/dashboard">
-                  <motion.button
-                    whileHover={{ scale: 1.03, y: -1 }}
-                    whileTap={{ scale: 0.97 }}
-                    className="rounded-full bg-[#641C32] px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_24px_-8px_rgba(100,28,50,0.55)] transition-all hover:bg-[#7D2943] sm:px-6"
-                  >
-                    <span className="sm:hidden">Espaço</span>
-                    <span className="hidden sm:inline">O Meu Espaço</span>
-                  </motion.button>
-                </Link>
-                <div className="ml-2 border-l border-[#E9E0E2] pl-4">
-                  <AccountButton />
-                </div>
-              </>
-            )}
+              {isLoaded && isSignedIn && (
+                <>
+                  <Link href="/dashboard">
+                    <motion.button
+                      whileHover={{ scale: 1.03, y: -1 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="rounded-full bg-[#641C32] px-4 py-2.5 text-sm font-bold text-white shadow-[0_10px_24px_-8px_rgba(100,28,50,0.55)] transition-all hover:bg-[#7D2943] sm:px-6"
+                    >
+                      <span className="sm:hidden">Espaço</span>
+                      <span className="hidden sm:inline">O Meu Espaço</span>
+                    </motion.button>
+                  </Link>
+                  <div className="ml-2 border-l border-[#E9E0E2] pl-4">
+                    <AccountButton />
+                  </div>
+                </>
+              )}
+            </div>
           </div>
+          <MobileNavigationMenu />
         </div>
       </motion.header>
 
