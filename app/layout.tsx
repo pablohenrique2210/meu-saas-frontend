@@ -1,9 +1,25 @@
-import { Inter, Playfair_Display } from "next/font/google";
+import type { Metadata } from "next";
+import { Manrope, Playfair_Display } from "next/font/google";
 import "./globals.css";
-import { ClerkProvider, UserButton, ClerkLoading, ClerkLoaded } from '@clerk/nextjs';
+import { ClerkProvider } from "@clerk/nextjs";
+import { ptBR } from "@clerk/localizations/pt-BR";
+import { GlobalAccountAccess } from "./AccountButton";
+import { lilianClerkAppearance } from "./clerkAppearance";
 
-const inter = Inter({ subsets: ["latin"], variable: '--font-sans' });
-const playfair = Playfair_Display({ subsets: ["latin"], variable: '--font-serif' });
+const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope" });
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-playfair",
+});
+
+export const metadata: Metadata = {
+  title: {
+    default: "Lilian Arruda | Saúde Corporativa",
+    template: "%s | Lilian Arruda",
+  },
+  description:
+    "Inteligência e educação corporativa para prevenir riscos psicossociais e desenvolver pessoas.",
+};
 
 export default function RootLayout({
   children,
@@ -11,23 +27,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider appearance={lilianClerkAppearance} localization={ptBR}>
       <html lang="pt-BR">
-        <body className={`${inter.variable} ${playfair.variable} font-sans relative bg-[#F9FAF9]`}>
-          
-          {/* O site carrega instantaneamente no servidor (Zero Piscar!) */}
+        <body
+          className={`${manrope.variable} ${playfair.variable} relative bg-[#FAF7F4] font-sans antialiased`}
+        >
           {children}
-
-          {/* Ocultamos apenas o botão de perfil enquanto o Clerk verifica o login */}
-          <div className="fixed top-6 right-8 z-50">
-            <ClerkLoading>
-              <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse"></div>
-            </ClerkLoading>
-            <ClerkLoaded>
-              <UserButton />
-            </ClerkLoaded>
-          </div>
-
+          <GlobalAccountAccess />
         </body>
       </html>
     </ClerkProvider>

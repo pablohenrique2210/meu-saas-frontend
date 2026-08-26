@@ -1,151 +1,415 @@
-import React from 'react';
-import Link from 'next/link';
+import Image from "next/image";
+import Link from "next/link";
+import BrandLogo from "../BrandLogo";
+
+// URL para o WhatsApp
+const whatsappUrl =
+  "https://wa.me/5511943874070?text=Ol%C3%A1%2C%20gostaria%20de%20conhecer%20as%20solu%C3%A7%C3%B5es%20para%20empresas.";
+
+// Listas de dados para as secções da página
+const expertise = [
+  "Educação Corporativa aplicada à realidade da indústria",
+  "Saúde corporativa humanizada com impacto real",
+  "Metodologias ativas e simulação realística em treinamentos",
+  "Integração entre saúde emocional e performance no trabalho",
+  "Consultoria estratégica em saúde integral corporativa",
+];
+
+const services = [
+  [
+    "01",
+    "Diagnóstico de riscos",
+    "Leitura técnica do ambiente organizacional para identificar fatores relacionados à saúde mental, liderança, clima e processos de trabalho.",
+  ],
+  [
+    "02",
+    "GRO psicossocial",
+    "Organização das evidências e dos processos necessários para uma gestão consistente dos riscos psicossociais.",
+  ],
+  [
+    "03",
+    "Plano de ação NR-1",
+    "Direcionamento personalizado para transformar o diagnóstico em prioridades, responsabilidades e acompanhamento prático.",
+  ],
+  [
+    "04",
+    "Treinamentos corporativos",
+    "Capacitação de gestores e equipes com linguagem acessível, aplicação prática e conexão com a realidade do negócio.",
+  ],
+  [
+    "05",
+    "Palestras e SIPAT",
+    "Conteúdos para calendários de saúde, campanhas internas, prevenção e fortalecimento da cultura do cuidado.",
+  ],
+  [
+    "06",
+    "Programa contínuo",
+    "Monitoramento recorrente para acompanhar planos de ação, desenvolver pessoas e sustentar a evolução da organização.",
+  ],
+];
+
+const solutions = [
+  [
+    "Diagnóstico de riscos psicossociais",
+    "Avaliação do ambiente organizacional, da saúde mental, do clima, da liderança e dos processos de trabalho.",
+  ],
+  [
+    "Consultoria e plano de ação",
+    "Estruturação personalizada das prioridades e do direcionamento necessário para uma implementação consistente.",
+  ],
+  [
+    "Treinamentos e palestras",
+    "Desenvolvimento de lideranças e equipes com foco em prevenção, saúde emocional e cultura organizacional.",
+  ],
+];
 
 export default function ParaEmpresas() {
   return (
-    <div className="min-h-screen bg-[#F9FAF9] font-sans text-[#2D3A31] selection:bg-[#5F7D65] selection:text-white">
+    <div className="min-h-screen overflow-hidden bg-[#FAF7F4] font-sans text-[#241A1D] selection:bg-[#641C32] selection:text-white">
       
-      {/* =========================================
-          1. NAVBAR (Versão B2B)
-          ========================================= */}
-      <header className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between relative z-10">
-        <Link href="/dashboard" className="flex items-center gap-2 cursor-pointer group">
-          <div className="bg-[#1C2B23] text-white p-2 rounded-full flex items-center justify-center transition-colors group-hover:bg-[#5F7D65]">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/>
-              <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/>
-            </svg>
-          </div>
-          <span className="font-serif text-2xl tracking-tight text-[#1C2B23]">Sereno <span className="text-[#8A9B8E] text-lg font-sans tracking-normal">Business</span></span>
-        </Link>
-
-        <div className="flex items-center gap-4">
-          <Link href="/rh" className="text-sm font-semibold text-[#1C2B23] hover:text-[#5F7D65] transition-colors">
-            Login RH
+      {/* --- HEADER --- */}
+      <header className="relative z-50 border-b border-[#E9E0E2]/80 bg-[#FAF7F4]/90 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-4 sm:gap-4 sm:px-8 sm:py-5">
+          <Link href="/" className="flex items-center">
+            <BrandLogo
+              priority
+              className="h-[46px] max-w-[138px] sm:h-[62px] sm:max-w-[245px]"
+            />
           </Link>
-          <button className="bg-[#1C2B23] text-white text-sm font-semibold px-6 py-2.5 rounded-full hover:bg-[#2D3A31] transition-colors shadow-sm">
-            Agendar Demo
-          </button>
+          <nav className="hidden items-center gap-8 text-sm font-semibold text-[#776A6E] lg:flex">
+            <a href="#sobre" className="transition-colors hover:text-[#641C32]">
+              Sobre Lilian
+            </a>
+            <a
+              href="#atuacao"
+              className="transition-colors hover:text-[#641C32]"
+            >
+              Atuação
+            </a>
+            <a
+              href="#solucoes"
+              className="transition-colors hover:text-[#641C32]"
+            >
+              Soluções
+            </a>
+          </nav>
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <Link
+              href="/rh"
+              className="inline-flex h-10 items-center justify-center rounded-full border border-[#641C32] px-4 text-sm font-bold text-[#641C32] transition-all hover:-translate-y-0.5 hover:bg-[#641C32] hover:text-white sm:h-11 sm:px-5"
+            >
+              Login RH
+            </Link>
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="hidden h-11 items-center justify-center rounded-full bg-[#641C32] px-5 text-sm font-bold text-white shadow-[0_12px_28px_-12px_rgba(100,28,50,0.8)] transition-all hover:-translate-y-0.5 hover:bg-[#7D2943] xl:inline-flex xl:px-7"
+            >
+              Falar com a especialista
+            </a>
+          </div>
         </div>
       </header>
 
-      {/* =========================================
-          2. HERO SECTION CORPORATIVO
-          ========================================= */}
-      <section className="relative pt-20 pb-32 overflow-hidden">
-        {/* Elemento visual de fundo */}
-        <div className="absolute top-0 right-0 w-1/2 h-full bg-[#EEF3EC] rounded-l-[100px] -z-10 opacity-50"></div>
+      {/* --- CONTEÚDO PRINCIPAL --- */}
+      <main>
         
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center gap-16">
-          <div className="flex-1 max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-[#E3EBE4] px-4 py-1.5 rounded-full text-xs font-bold text-[#4A6551] mb-6 uppercase tracking-wider">
-              Para Gestores e RH
+        {/* SECÇÃO 1: HERO */}
+        <section className="relative">
+          <div className="absolute inset-x-0 top-0 h-[70%] bg-[radial-gradient(circle_at_15%_10%,rgba(197,154,98,0.14),transparent_42%),radial-gradient(circle_at_85%_25%,rgba(100,28,50,0.09),transparent_40%)]" />
+          <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-5 pb-20 pt-14 sm:px-8 sm:pt-20 lg:grid-cols-[1.02fr_0.98fr] lg:gap-16 lg:pb-28 lg:pt-24">
+            <div className="max-w-2xl">
+              <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#DED4D7] bg-white/70 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#7D2943] shadow-sm">
+                <span className="h-2 w-2 rounded-full bg-[#C59A62]" />
+                Consultoria • Educação • Saúde Corporativa
+              </div>
+              <h1 className="max-w-3xl font-serif text-5xl leading-[0.98] tracking-[-0.035em] sm:text-6xl lg:text-[76px]">
+                Pessoas saudáveis. Empresas mais{" "}
+                <span className="italic text-[#641C32]">fortes.</span>
+              </h1>
+              <p className="mt-7 max-w-xl text-lg leading-8 text-[#776A6E] sm:text-xl">
+                Estratégia, educação e cuidado conectados para desenvolver
+                lideranças, fortalecer equipes e construir ambientes de trabalho
+                mais seguros, conscientes e humanizados.
+              </p>
+              <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center gap-3 rounded-full bg-[#641C32] px-8 py-4 font-bold text-white shadow-[0_18px_36px_-16px_rgba(100,28,50,0.75)] transition-all hover:-translate-y-1 hover:bg-[#7D2943]"
+                >
+                  Solicitar diagnóstico <span aria-hidden="true">↗</span>
+                </a>
+                <a
+                  href="#sobre"
+                  className="inline-flex items-center justify-center rounded-full border border-[#DED4D7] bg-white/60 px-8 py-4 font-bold transition-colors hover:bg-white"
+                >
+                  Conheça a consultora
+                </a>
+              </div>
+              <div className="mt-12 flex items-center gap-5 border-t border-[#E9E0E2] pt-7">
+                <strong className="font-serif text-4xl font-normal text-[#641C32]">
+                  +16
+                </strong>
+                <p className="max-w-[250px] text-sm leading-5 text-[#776A6E]">
+                  anos de experiência em desenvolvimento humano, saúde e
+                  ambientes corporativos.
+                </p>
+              </div>
             </div>
-            <h1 className="font-serif text-5xl md:text-6xl text-[#1C2B23] leading-[1.1] tracking-tight mb-6">
-              Proteja o maior ativo da sua empresa: <span className="text-[#5F7D65] italic">as pessoas.</span>
-            </h1>
-            <p className="text-lg text-[#5C6E60] leading-relaxed mb-10 max-w-lg">
-              Reduza o turnover, previna o burnout e garanta a conformidade com as normas de saúde mental no trabalho através da nossa plataforma baseada em dados e gamificação.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <button className="bg-[#5F7D65] text-white px-8 py-4 rounded-full font-bold hover:bg-[#4A6551] transition-all shadow-lg shadow-[#5F7D65]/20 flex items-center justify-center gap-2">
-                Falar com um Consultor
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-              </button>
+
+            <div className="relative mx-auto w-full max-w-[570px] lg:mx-0 lg:ml-auto">
+              <div className="relative aspect-[4/5] overflow-hidden rounded-[2.5rem] bg-[#E9E0E2] shadow-[0_32px_80px_-30px_rgba(36,26,29,0.38)]">
+                <Image
+                  src="/consultora/lilian-arruda-consultoria.jpg"
+                  alt="Lilian Arruda em ambiente corporativo"
+                  fill
+                  priority
+                  sizes="(max-width: 1024px) 90vw, 45vw"
+                  className="object-cover object-top"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#241A1D]/35 via-transparent to-transparent" />
+              </div>
+              <div className="absolute -bottom-7 -left-3 max-w-[280px] rounded-3xl border border-white/70 bg-white/90 p-5 shadow-xl backdrop-blur-xl sm:-left-8 sm:p-6">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7D2943]">
+                  Lilian Arruda
+                </p>
+                <p className="mt-2 font-serif text-2xl leading-tight">
+                  Gestão em Educação &amp; Saúde Corporativa
+                </p>
+              </div>
             </div>
           </div>
+        </section>
 
-          {/* Imagem/Mockup do Dashboard RH (Abstrato) */}
-          <div className="flex-1 w-full relative">
-            <div className="bg-white p-6 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.05)] border border-[#E3EBE4] relative z-10 transform rotate-2 hover:rotate-0 transition-transform duration-500">
-              <div className="flex items-center justify-between mb-6 border-b border-[#F4F8F4] pb-4">
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-[#8A9B8E] uppercase tracking-wider">Score da Empresa</span>
-                  <span className="font-serif text-3xl font-bold text-[#1C2B23]">78/100</span>
-                </div>
-                <div className="bg-[#EEF3EC] text-[#4A6551] text-xs font-bold px-3 py-1.5 rounded-md">
-                  +5% este mês
-                </div>
+        {/* SECÇÃO 2: SOBRE */}
+        <section id="sobre" className="bg-white py-24 sm:py-32">
+          <div className="mx-auto grid max-w-7xl items-center gap-14 px-5 sm:px-8 lg:grid-cols-[0.82fr_1.18fr] lg:gap-20">
+            <div className="relative mx-auto w-full max-w-[470px]">
+              <div className="relative aspect-[4/5] overflow-hidden rounded-[2.25rem] bg-[#F5EFEC]">
+                <Image
+                  src="/consultora/lilian-arruda-retrato.jpg"
+                  alt="Retrato profissional de Lilian Arruda"
+                  fill
+                  sizes="(max-width: 1024px) 90vw, 38vw"
+                  className="object-cover object-top"
+                />
               </div>
-              <div className="space-y-4">
-                <div className="h-4 bg-[#F4F8F4] rounded-full w-3/4"></div>
-                <div className="h-4 bg-[#F4F8F4] rounded-full w-1/2"></div>
-                <div className="flex gap-2 pt-4">
-                  <div className="h-20 bg-[#EEF3EC] rounded-xl flex-1 border border-[#D5E0D7]"></div>
-                  <div className="h-20 bg-rose-50 rounded-xl flex-1 border border-rose-100"></div>
-                  <div className="h-20 bg-[#EEF3EC] rounded-xl flex-1 border border-[#D5E0D7]"></div>
-                </div>
+              <div className="absolute -bottom-6 -right-3 h-28 w-28 rounded-full border-[14px] border-white bg-[#641C32] sm:-right-8" />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#7D2943]">
+                Sobre a especialista
+              </p>
+              <h2 className="mt-4 max-w-2xl font-serif text-4xl leading-tight tracking-tight sm:text-5xl">
+                Técnica na saúde. Estratégica na educação. Humana na condução.
+              </h2>
+              <div className="mt-7 space-y-5 text-lg leading-8 text-[#776A6E]">
+                <p>
+                  Lilian Arruda é enfermeira, especialista em Educação
+                  Corporativa e Enfermagem do Trabalho, com mais de 16 anos de
+                  experiência dedicados ao desenvolvimento humano e à promoção
+                  da saúde nas organizações.
+                </p>
+                <p>
+                  Sua atuação integra saúde ocupacional, estratégias
+                  educacionais e abordagem comportamental para fortalecer
+                  lideranças, desenvolver equipes e apoiar culturas mais
+                  conscientes e acolhedoras.
+                </p>
+              </div>
+              <div className="mt-9 grid gap-3 sm:grid-cols-2">
+                {expertise.map((item) => (
+                  <div
+                    key={item}
+                    className="flex gap-3 rounded-2xl border border-[#E9E0E2] bg-[#FAF7F4] p-4 text-sm font-semibold leading-6 text-[#4A3D41]"
+                  >
+                    <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#641C32] text-[10px] text-white">
+                      ✓
+                    </span>
+                    {item}
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="absolute -z-10 top-10 -left-10 w-full h-full bg-[#B8CBBF]/20 rounded-3xl blur-2xl"></div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* =========================================
-          3. PROPOSTA DE VALOR (FEATURES)
-          ========================================= */}
-      <section className="py-24 bg-white border-t border-[#E3EBE4]">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16 max-w-2xl mx-auto">
-            <h2 className="font-serif text-4xl text-[#1C2B23] tracking-tight mb-4">Métricas que geram impacto real</h2>
-            <p className="text-[#5C6E60] text-lg">A Sereno transforma dados comportamentais em planos de ação claros para a sua equipa de Gestão de Pessoas.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-            {/* Feature 1 */}
-            <div className="p-8 rounded-3xl bg-[#F4F8F4] border border-[#E3EBE4]">
-              <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-sm border border-[#D5E0D7] mb-6">
-                📊
+        {/* SECÇÃO 3: ATUAÇÃO */}
+        <section id="atuacao" className="py-24 sm:py-32">
+          <div className="mx-auto max-w-7xl px-5 sm:px-8">
+            <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
+              <div className="max-w-3xl">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#7D2943]">
+                  Áreas de atuação
+                </p>
+                <h2 className="mt-4 font-serif text-4xl leading-tight tracking-tight sm:text-5xl">
+                  Da identificação do risco à transformação da cultura.
+                </h2>
               </div>
-              <h3 className="text-xl font-bold text-[#1C2B23] mb-3">Mapeamento de Riscos</h3>
-              <p className="text-[#5C6E60] leading-relaxed">
-                Identifique departamentos em risco de burnout ou stresse antes que se torne um problema. As nossas avaliações psicossociais são baseadas em ciência.
+              <p className="max-w-md text-base leading-7 text-[#776A6E]">
+                Soluções conectadas à realidade de cada empresa, com
+                conhecimento técnico, educação aplicada e acompanhamento.
+              </p>
+            </div>
+            <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {services.map(([number, title, description]) => (
+                <article
+                  key={number}
+                  className="rounded-[2rem] border border-[#E9E0E2] bg-white p-7 transition-all hover:-translate-y-1 hover:shadow-[0_24px_50px_-30px_rgba(100,28,50,0.45)] sm:p-8"
+                >
+                  <span className="font-serif text-3xl text-[#C59A62]">
+                    {number}
+                  </span>
+                  <h3 className="mt-8 text-xl font-bold">{title}</h3>
+                  <p className="mt-3 leading-7 text-[#776A6E]">{description}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* SECÇÃO 4: DESTAQUE ESCRITÓRIO */}
+        <section className="bg-[#241A1D] py-24 text-white sm:py-28">
+          <div className="mx-auto grid max-w-7xl gap-5 px-5 sm:px-8 lg:grid-cols-[1.2fr_0.8fr]">
+
+            <div className="relative min-h-[560px] overflow-hidden rounded-[2.5rem]">
+              <Image
+                src="/consultora/lilian-arruda-executiva.jpg"
+                alt="Lilian Arruda em atuação profissional"
+                fill
+                sizes="(max-width: 1024px) 95vw, 58vw"
+                className="object-cover object-top"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#241A1D]/70 via-transparent to-transparent" />
+              <p className="absolute bottom-8 left-8 max-w-lg font-serif text-3xl leading-tight sm:bottom-10 sm:left-10 sm:text-4xl">
+                Conhecimento que se transforma em cuidado, decisão e resultado.
               </p>
             </div>
 
-            {/* Feature 2 */}
-            <div className="p-8 rounded-3xl bg-[#F4F8F4] border border-[#E3EBE4]">
-              <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-sm border border-[#D5E0D7] mb-6">
-                🎓
-              </div>
-              <h3 className="text-xl font-bold text-[#1C2B23] mb-3">Educação e Engajamento</h3>
-              <p className="text-[#5C6E60] leading-relaxed">
-                Trilhas de aprendizagem curtas e gamificadas que os colaboradores realmente querem fazer. Promovemos inteligência emocional de forma acessível.
-              </p>
-            </div>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-1">
 
-            {/* Feature 3 */}
-            <div className="p-8 rounded-3xl bg-[#F4F8F4] border border-[#E3EBE4]">
-              <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-2xl shadow-sm border border-[#D5E0D7] mb-6">
-                🛡️
+              <div className="relative min-h-[270px] overflow-hidden rounded-[2.5rem]">
+                <Image
+                  src="/consultora/lilian-arruda-escritorio.jpg"
+                  alt="Lilian Arruda em ambiente de consultoria"
+                  fill
+                  sizes="(max-width: 1024px) 48vw, 36vw"
+                  // 🚀 A MAGIA ACONTECE AQUI: Em vez de usar top ou center,
+                  // controlamos exatamente a percentagem vertical para descer um pouco
+                  className="object-cover object-[center_25%]"
+                />
               </div>
-              <h3 className="text-xl font-bold text-[#1C2B23] mb-3">Conformidade e ESG</h3>
-              <p className="text-[#5C6E60] leading-relaxed">
-                Gere relatórios automatizados para demonstrar as ações da sua empresa na proteção da saúde mental, fortalecendo a sua cultura e relatórios ESG.
-              </p>
+
+              <div className="flex min-h-[270px] flex-col justify-between rounded-[2.5rem] bg-[#641C32] p-8 sm:p-10">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/65">
+                  Visão integrada
+                </p>
+                <p className="font-serif text-3xl leading-tight sm:text-4xl">
+                  Saúde, comportamento e performance de forma estratégica e
+                  humanizada.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* =========================================
-          4. CALL TO ACTION FINAL
-          ========================================= */}
-      <section className="py-24 bg-[#1C2B23] text-center px-6">
-        <div className="max-w-3xl mx-auto">
-          <h2 className="font-serif text-4xl text-white mb-6">Pronto para transformar o clima da sua empresa?</h2>
-          <p className="text-[#B8CBBF] text-lg mb-10">
-            Junte-se às organizações que priorizam o bem-estar como estratégia de crescimento.
+        {/* SECÇÃO 5: SOLUÇÕES */}
+        <section id="solucoes" className="bg-white py-24 sm:py-32">
+          <div className="mx-auto max-w-7xl px-5 sm:px-8">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#7D2943]">
+                Soluções para sua empresa
+              </p>
+              <h2 className="mt-4 font-serif text-4xl leading-tight tracking-tight sm:text-5xl">
+                Preparação para a NR-1 com clareza e aplicação prática.
+              </h2>
+              <p className="mt-6 text-lg leading-8 text-[#776A6E]">
+                Uma jornada estruturada para reconhecer riscos psicossociais,
+                orientar a gestão e capacitar quem conduz as equipes.
+              </p>
+            </div>
+            <div className="mt-14 grid gap-5 lg:grid-cols-3">
+              {solutions.map(([title, description], index) => (
+                <article
+                  key={title}
+                  className="rounded-[2rem] bg-[#F5EFEC] p-8 sm:p-9"
+                >
+                  <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white font-serif text-xl text-[#641C32] shadow-sm">
+                    {index + 1}
+                  </span>
+                  <h3 className="mt-8 text-xl font-bold">{title}</h3>
+                  <p className="mt-4 leading-7 text-[#776A6E]">{description}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* SECÇÃO 6: CONTACTO */}
+        <section className="px-5 pb-24 sm:px-8 sm:pb-32">
+          <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[2.75rem] bg-[#641C32] px-7 py-14 text-white sm:px-14 sm:py-16 lg:px-20 lg:py-20">
+            <div className="absolute -right-20 -top-32 h-96 w-96 rounded-full border-[70px] border-white/[0.05]" />
+            <div className="relative grid items-end gap-10 lg:grid-cols-[1fr_auto]">
+              <div className="max-w-3xl">
+                <p className="text-xs font-bold uppercase tracking-[0.22em] text-white/60">
+                  Fale com a especialista
+                </p>
+                <h2 className="mt-5 font-serif text-4xl leading-tight sm:text-5xl">
+                  Vamos analisar a realidade da sua empresa?
+                </h2>
+                <p className="mt-5 max-w-2xl text-lg leading-8 text-white/75">
+                  Receba orientação para identificar riscos, fortalecer sua
+                  equipe e construir uma atuação preventiva e sustentável.
+                </p>
+                <div className="mt-8 flex flex-col gap-2 text-sm text-white/70 sm:flex-row sm:gap-8">
+                  <a
+                    href="mailto:contato@lilianarruda.com.br"
+                    className="transition-colors hover:text-white"
+                  >
+                    contato@lilianarruda.com.br
+                  </a>
+                  <a
+                    href="tel:+5511943874070"
+                    className="transition-colors hover:text-white"
+                  >
+                    (11) 9 4387-4070
+                  </a>
+                </div>
+              </div>
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-full items-center justify-center rounded-full bg-white px-8 py-4 font-bold text-[#641C32] shadow-xl transition-all hover:-translate-y-1 hover:bg-[#FAF7F4] sm:w-auto"
+              >
+                Solicitar atendimento
+              </a>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {/* --- FOOTER --- */}
+      <footer className="border-t border-[#E9E0E2] bg-white">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-5 px-5 py-8 text-center text-sm text-[#776A6E] sm:px-8 md:flex-row md:text-left">
+          <BrandLogo className="h-11 max-w-[175px]" />
+          <p>
+            © {new Date().getFullYear()} Lilian Arruda • Educação e Saúde
+            Corporativa
           </p>
-          <div className="flex justify-center">
-            <button className="bg-white text-[#1C2B23] px-10 py-4 rounded-full font-bold hover:bg-[#EEF3EC] transition-all flex items-center gap-2">
-              Agendar uma Demonstração Gratuita
-            </button>
-          </div>
+          <a
+            href="https://lilianarruda.com.br/"
+            target="_blank"
+            rel="noreferrer"
+            className="font-semibold text-[#641C32] hover:text-[#7D2943]"
+          >
+            Site oficial ↗
+          </a>
         </div>
-      </section>
-
+      </footer>
     </div>
   );
 }

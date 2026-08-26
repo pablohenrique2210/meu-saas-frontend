@@ -1,0 +1,31 @@
+export const lilianClerkAppearance = {
+  variables: {
+    colorPrimary: "#641C32",
+    colorText: "#241A1D",
+    colorTextSecondary: "#776A6E",
+    colorBackground: "#FFFFFF",
+    colorInputBackground: "#FAF7F4",
+    colorInputText: "#241A1D",
+    borderRadius: "0.875rem",
+    fontFamily: "var(--font-sans)",
+  },
+  elements: {
+    cardBox: "w-full shadow-none",
+    card: "w-full border border-[#E9E0E2] shadow-[0_24px_70px_-35px_rgba(100,28,50,0.32)]",
+    navbar: "border-r border-[#E9E0E2]",
+    navbarButton: "text-[#776A6E] hover:text-[#641C32]",
+    navbarButtonIcon: "text-[#8F3651]",
+    headerTitle: "font-serif text-[#241A1D]",
+    headerSubtitle: "text-[#776A6E]",
+    profileSectionTitleText: "text-[#241A1D]",
+    profileSectionContent: "text-[#776A6E]",
+    formButtonPrimary: "bg-[#641C32] hover:bg-[#7D2943]",
+    formFieldInput:
+      "border-[#DED4D7] bg-[#FAF7F4] focus:border-[#641C32] focus:ring-[#641C32]/20",
+    footerActionLink: "text-[#641C32] hover:text-[#7D2943]",
+    userButtonPopoverCard: "border border-[#E9E0E2] shadow-xl",
+    userButtonPopoverActionButton: "hover:bg-[#F5EFEC]",
+    userButtonPopoverActionButtonText: "text-[#241A1D]",
+    userButtonPopoverActionButtonIcon: "text-[#641C32]",
+  },
+} as const;

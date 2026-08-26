@@ -1,320 +1,673 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import Link from 'next/link';
-import DailyCheckIn from '../DailyCheckIn';
-import ProfileModal from '../ProfileModal'; 
-import SmartInsight from '../SmartInsight'; 
+import { useCallback, useEffect, useState } from "react";
+import { motion } from "framer-motion";
+import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
+import ProfileModal from "../ProfileModal";
+import BrandLogo from "../BrandLogo";
+import EmployeeManagerModal from "./EmployeeManagerModal";
+import ReportGeneratorModal from "./ReportGeneratorModal";
+import {
+  buildWhatsAppActivationUrl,
+  getMyProfile,
+  getEmployeeInvitationLink,
+  getUser,
+  listEmployeeInvitations,
+  listUsers,
+  revokeEmployeeInvitation,
+  type EmployeeInvitation,
+  type UserProfile,
+  UsersApiError,
+} from "@/lib/users-api";
 
-// ==========================================
-// 1. O NOVO CARD DE ALERTA INTELIGENTE (PREMIUM)
-// ==========================================
-function SmartAlertCard({ team, risk, metrics, insight, onAction }: any) {
-  return (
-    <motion.div 
-      whileHover={{ y: -4, boxShadow: "0 20px 40px -15px rgba(225, 29, 72, 0.15)" }}
-      className="relative bg-white border border-rose-200/80 rounded-[20px] p-6 overflow-hidden group transition-all duration-300"
-    >
-      {/* Efeito de Pulse (Atenção Urgente mas Elegante) */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-2xl -mr-10 -mt-10 animate-pulse pointer-events-none" />
-      
-      <div className="flex justify-between items-start mb-5 relative z-10">
-        <div>
-          <h3 className="font-bold text-slate-900 text-lg mb-1">{team}</h3>
-          <div className="inline-flex items-center gap-1.5 bg-rose-50 border border-rose-100 text-rose-700 text-xs font-black px-2.5 py-1 rounded-md uppercase tracking-wide">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-            {risk}
-          </div>
-        </div>
-        <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-500 border border-rose-100">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-        </div>
-      </div>
-
-      {/* Métricas Essenciais (Subinfo) */}
-      <div className="grid grid-cols-3 gap-3 mb-5 relative z-10">
-        {metrics.map((m: any, i: number) => (
-          <div key={i} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">{m.label}</p>
-            <p className={`text-sm font-black ${m.alert ? 'text-rose-600' : 'text-slate-700'}`}>{m.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Fake AI Insight (O que vende o software) */}
-      <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-4 mb-6 flex items-start gap-3 shadow-inner relative z-10">
-        <span className="text-amber-400 text-lg mt-0.5 animate-bounce">✨</span>
-        <p className="text-xs text-slate-200 font-medium leading-relaxed">
-          <span className="text-white font-bold">Insight Automático:</span> {insight}
-        </p>
-      </div>
-
-      {/* Botões de Ação */}
-      <div className="flex gap-3 relative z-10">
-        <button 
-          onClick={onAction} 
-          className="flex-1 bg-rose-600 text-white text-sm font-bold py-3 rounded-xl hover:bg-rose-700 transition-colors shadow-[0_4px_14px_0_rgba(225,29,72,0.3)] active:scale-95 flex items-center justify-center gap-2"
-        >
-          Recomendar Trilha
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </button>
-        <button className="px-5 py-3 bg-white border border-slate-200 text-slate-600 text-sm font-bold rounded-xl hover:bg-slate-50 transition-colors active:scale-95">
-          Ver Detalhes
-        </button>
-      </div>
-    </motion.div>
-  );
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "US";
+  return `${parts[0][0]}${parts.length > 1 ? parts.at(-1)?.[0] : ""}`.toUpperCase();
 }
 
-// ==========================================
-// 2. FUNÇÕES AUXILIARES
-// ==========================================
-function useCountUp(end: number, duration: number = 2) {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    let startTime: number;
-    let animationFrame: number;
-    const step = (timestamp: number) => {
-      if (!startTime) startTime = timestamp;
-      const progress = Math.min((timestamp - startTime) / (duration * 1000), 1);
-      const easeOut = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.floor(easeOut * end));
-      if (progress < 1) animationFrame = requestAnimationFrame(step);
-    };
-    animationFrame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(animationFrame);
-  }, [end, duration]);
-  return count;
-}
-
-
-// ==========================================
-// 3. TELA PRINCIPAL (DASHBOARD)
-// ==========================================
 export default function DashboardRH() {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
-  const [isPlanApplied, setIsPlanApplied] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [employees, setEmployees] = useState<UserProfile[]>([]);
+  const [invitations, setInvitations] = useState<EmployeeInvitation[]>([]);
+  const [isUsersLoading, setIsUsersLoading] = useState(true);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [selectedEmployee, setSelectedEmployee] = useState<UserProfile | null>(
+    null,
+  );
+  const [isCreateEmployeeOpen, setIsCreateEmployeeOpen] = useState(false);
+  const [isReportGeneratorOpen, setIsReportGeneratorOpen] = useState(false);
+  const [openingEmployeeId, setOpeningEmployeeId] = useState<string | null>(
+    null,
+  );
+  const [copyingInvitationId, setCopyingInvitationId] = useState<string | null>(
+    null,
+  );
+  const [copiedInvitationId, setCopiedInvitationId] = useState<string | null>(
+    null,
+  );
+  const [sharingInvitationId, setSharingInvitationId] = useState<string | null>(
+    null,
+  );
 
-  const healthScore = useCountUp(78, 2.5);
+  const canManageUsers =
+    profile?.role === "ADMIN" || profile?.role === "HR_MANAGER";
 
-  const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.1 } } };
-  
-  // 👇 AQUI ESTÁ A CORREÇÃO: "as const" adicionado ao type: "spring"
-  const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } } };
+  const loadUsers = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!isLoaded) return;
 
-  const handleApplyPlan = () => {
-    setIsPlanApplied(true);
-    setTimeout(() => {
-      setIsAlertModalOpen(false);
-      setIsPlanApplied(false); 
-    }, 4000); 
+      if (!isSignedIn) {
+        setIsUsersLoading(false);
+        setUsersError("Inicie sessão para consultar os colaboradores.");
+        return;
+      }
+
+      setIsUsersLoading(true);
+      setUsersError(null);
+
+      try {
+        const token = await getToken({ skipCache: true });
+        if (!token)
+          throw new Error("A sessão não forneceu um token de acesso.");
+
+        const currentProfile = await getMyProfile(token, signal);
+        setProfile(currentProfile);
+
+        if (
+          currentProfile.role === "ADMIN" ||
+          currentProfile.role === "HR_MANAGER"
+        ) {
+          const [companyUsers, companyInvitations] = await Promise.all([
+            listUsers(token, signal),
+            listEmployeeInvitations(token, signal),
+          ]);
+          setEmployees(companyUsers);
+          setInvitations(companyInvitations);
+        } else {
+          setEmployees([]);
+          setInvitations([]);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return;
+
+        setUsersError(
+          error instanceof UsersApiError || error instanceof Error
+            ? error.message
+            : "Não foi possível carregar os colaboradores.",
+        );
+      } finally {
+        if (!signal?.aborted) setIsUsersLoading(false);
+      }
+    },
+    [getToken, isLoaded, isSignedIn],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void loadUsers(controller.signal);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [loadUsers]);
+
+  const handleViewEmployee = async (employee: UserProfile) => {
+    setOpeningEmployeeId(employee.id);
+    setUsersError(null);
+
+    try {
+      const token = await getToken({ skipCache: true });
+      if (!token) throw new Error("A sessão não forneceu um token de acesso.");
+      setSelectedEmployee(await getUser(token, employee.id));
+    } catch (error) {
+      setUsersError(
+        error instanceof UsersApiError || error instanceof Error
+          ? error.message
+          : "Não foi possível carregar este perfil.",
+      );
+    } finally {
+      setOpeningEmployeeId(null);
+    }
+  };
+
+  const handleEmployeeSaved = async () => {
+    await loadUsers();
+    setSelectedEmployee(null);
+  };
+
+  const handleRevokeInvitation = async (inviteId: string) => {
+    setUsersError(null);
+    try {
+      const token = await getToken({ skipCache: true });
+      if (!token) throw new Error("A sessão não forneceu um token de acesso.");
+      await revokeEmployeeInvitation(token, inviteId);
+      await loadUsers();
+    } catch (error) {
+      setUsersError(
+        error instanceof UsersApiError || error instanceof Error
+          ? error.message
+          : "Não foi possível cancelar o convite.",
+      );
+    }
+  };
+
+  const handleCopyInvitationLink = async (inviteId: string) => {
+    setCopyingInvitationId(inviteId);
+    setUsersError(null);
+    try {
+      const token = await getToken({ skipCache: true });
+      if (!token) throw new Error("A sessão não forneceu um token de acesso.");
+      const { url } = await getEmployeeInvitationLink(token, inviteId);
+      await navigator.clipboard.writeText(url);
+      setCopiedInvitationId(inviteId);
+      window.setTimeout(() => setCopiedInvitationId(null), 3000);
+    } catch (error) {
+      setUsersError(
+        error instanceof UsersApiError || error instanceof Error
+          ? error.message
+          : "Não foi possível copiar o link do convite.",
+      );
+    } finally {
+      setCopyingInvitationId(null);
+    }
+  };
+
+  const handleShareInvitationWhatsApp = async (
+    invitation: EmployeeInvitation,
+  ) => {
+    const whatsappWindow = window.open("", "_blank");
+    setSharingInvitationId(invitation.id);
+    setUsersError(null);
+
+    try {
+      if (!whatsappWindow) {
+        throw new Error(
+          "O navegador bloqueou a abertura do WhatsApp. Permita pop-ups e tente novamente.",
+        );
+      }
+
+      const token = await getToken({ skipCache: true });
+      if (!token) throw new Error("A sessão não forneceu um token de acesso.");
+      const { url } = await getEmployeeInvitationLink(token, invitation.id);
+      whatsappWindow.opener = null;
+      whatsappWindow.location.href = buildWhatsAppActivationUrl(
+        invitation,
+        url,
+      );
+    } catch (error) {
+      whatsappWindow?.close();
+      setUsersError(
+        error instanceof UsersApiError || error instanceof Error
+          ? error.message
+          : "Não foi possível abrir o WhatsApp.",
+      );
+    } finally {
+      setSharingInvitationId(null);
+    }
+  };
+
+  const pendingInvitations = invitations.filter(
+    (invitation) => invitation.status === "PENDING",
+  );
+
+  const displayName = profile?.name || "Utilizador";
+  const displayInitials = getInitials(displayName);
+  const activeEmployees = employees.filter(
+    (employee) => employee.isActive,
+  ).length;
+
+  const container = {
+    hidden: { opacity: 0 },
+    show: { opacity: 1, transition: { staggerChildren: 0.1 } },
+  };
+  const item = {
+    hidden: { opacity: 0, y: 20 },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { type: "spring" as const, stiffness: 300, damping: 24 },
+    },
   };
 
   return (
-    <div className="flex h-screen bg-[#F8FAFC] font-sans text-slate-900 antialiased selection:bg-indigo-500 selection:text-white overflow-hidden">
-      
-      {/* SIDEBAR */}
-      <aside className="w-64 bg-[#0A0A0A] border-r border-white/10 flex flex-col justify-between z-20">
-        <div className="p-5">
-          <div className="flex items-center gap-3 mb-10 px-2 mt-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            </div>
-            <span className="font-semibold text-white tracking-tight text-lg">Mente<span className="text-slate-400 font-normal">Saudável</span></span>
-          </div>
-          <nav className="flex flex-col space-y-1">
-            <Link href="/rh" className="bg-white/10 text-white px-3 py-2.5 rounded-xl flex items-center gap-3 text-sm font-medium border border-white/5 shadow-sm backdrop-blur-sm">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-              Saúde Organizacional
+    <div className="flex h-screen bg-[#FAF7F4] font-sans text-[#241A1D] antialiased selection:bg-[#641C32] selection:text-white overflow-hidden">
+      {/* SIDEBAR CORPORATIVA */}
+      <aside className="z-20 hidden w-64 flex-col justify-between border-r border-[#E9E0E2] bg-white shadow-[4px_0_24px_rgb(0,0,0,0.02)] lg:flex">
+        <div className="p-6">
+          <Link href="/" className="group mb-12 flex items-center">
+            <BrandLogo priority className="h-[52px] max-w-[190px]" />
+          </Link>
+
+          <nav className="flex flex-col space-y-2">
+            <Link
+              href="/rh"
+              className="bg-[#F5EFEC] text-[#641C32] px-4 py-3 rounded-xl flex items-center gap-3 text-sm font-semibold border border-[#E9E0E2]"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect width="7" height="9" x="3" y="3" rx="1" />
+                <rect width="7" height="5" x="14" y="3" rx="1" />
+                <rect width="7" height="9" x="14" y="12" rx="1" />
+                <rect width="7" height="5" x="3" y="16" rx="1" />
+              </svg>
+              Educação Corporativa
+            </Link>
+            <Link
+              href="/admin/cursos"
+              className="px-4 py-3 rounded-xl flex items-center gap-3 text-sm font-semibold text-[#776A6E] transition-colors hover:bg-[#FAF7F4] hover:text-[#641C32]"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+              </svg>
+              Importar / criar cursos
             </Link>
           </nav>
         </div>
       </aside>
 
       {/* ÁREA PRINCIPAL */}
-      <div className="flex-1 flex flex-col relative overflow-y-auto overflow-x-hidden">
-        
-        {/* HEADER TRANSLÚCIDO */}
-        <header className="sticky top-0 h-16 bg-[#F8FAFC]/80 backdrop-blur-md border-b border-slate-200/60 flex items-center justify-between px-8 z-30">
-           <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-             <span>Workspace</span> 
-             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
-             <span className="text-slate-900 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Dashboard Executivo</span>
-           </div>
-           
-           <button 
-             onClick={() => setIsProfileOpen(true)}
-             className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#5F7D65] to-[#8A9B8E] text-white flex items-center justify-center font-bold shadow-sm hover:scale-105 transition-transform"
-           >
-             JS
-           </button>
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
+        {/* HEADER */}
+        <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between border-b border-[#E9E0E2] bg-[#FAF7F4]/80 px-4 backdrop-blur-md sm:px-6 lg:px-10">
+          <div className="flex items-center gap-2 text-[13px] text-[#776A6E] font-medium">
+            <Link href="/" className="mr-1 lg:hidden">
+              <BrandLogo compact className="h-9" />
+            </Link>
+            <span className="hidden sm:inline">Workspace</span>
+            <svg
+              className="hidden sm:block"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+            <span className="text-[#241A1D] bg-white px-3 py-1.5 rounded-lg border border-[#E9E0E2] shadow-sm">
+              Inteligência Estratégica
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link
+              href="/admin/cursos"
+              className="inline-flex items-center gap-2 rounded-full border border-[#E9E0E2] bg-white px-3 py-2 text-xs font-bold text-[#641C32] shadow-sm transition-colors hover:bg-[#F5EFEC] sm:px-4 sm:text-sm"
+            >
+              <span aria-hidden="true">＋</span>
+              <span className="hidden sm:inline">Gerenciar cursos</span>
+              <span className="sm:hidden">Cursos</span>
+            </Link>
+            <button
+              onClick={() => setIsProfileOpen(true)}
+              className="w-10 h-10 rounded-full bg-[#641C32] text-white flex items-center justify-center text-sm font-semibold shadow-sm hover:bg-[#7D2943] hover:scale-105 transition-all"
+            >
+              {displayInitials}
+            </button>
+          </div>
         </header>
 
-        <main className="flex-1 p-8 pb-24">
-          <motion.div variants={container} initial="hidden" animate="show" className="max-w-5xl mx-auto">
-            
-            {/* HERO SECTION GIGANTE (SCORE) */}
-            <motion.div variants={item} className="relative overflow-hidden bg-white border border-slate-200/60 rounded-[32px] p-10 shadow-sm mb-10 group">
-              <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-                <div>
-                  <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 mb-2">
-                    Estável, com <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-rose-700">riscos emergentes.</span>
-                  </h1>
-                  <p className="text-slate-500 font-medium text-lg max-w-md mt-4">
-                    O bem-estar geral está bom, mas a nossa Inteligência detetou focos urgentes que exigem ação.
-                  </p>
+        <main className="flex-1 p-4 pb-24 sm:p-6 lg:p-10">
+          <motion.div
+            variants={container}
+            initial="hidden"
+            animate="show"
+            className="max-w-[1000px] mx-auto"
+          >
+            <motion.section variants={item} className="mb-12">
+              <div className="mb-6">
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#8F3651]">
+                  Dados da empresa
+                </p>
+                <h1 className="mt-2 font-serif text-4xl text-[#241A1D] md:text-5xl">
+                  Gestão de pessoas
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#776A6E] sm:text-base">
+                  Os indicadores abaixo são calculados exclusivamente a partir
+                  dos colaboradores e convites registrados no backend.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                {[
+                  ["Colaboradores cadastrados", employees.length],
+                  ["Colaboradores ativos", activeEmployees],
+                  ["Aguardando ativação", pendingInvitations.length],
+                ].map(([label, value]) => (
+                  <div
+                    key={String(label)}
+                    className="rounded-[24px] border border-[#E9E0E2] bg-white p-6 shadow-[0_8px_30px_rgba(36,26,29,0.03)]"
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#776A6E]">
+                      {label}
+                    </p>
+                    <p className="mt-3 font-serif text-4xl text-[#641C32]">
+                      {isUsersLoading ? "—" : value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </motion.section>
+
+            {/* ==========================================
+                NOVA SECÇÃO: LISTA DE COLABORADORES (TABELA)
+                ========================================== */}
+            <motion.div variants={item} className="mt-8">
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-[22px] font-semibold text-[#241A1D] tracking-tight">
+                    Colaboradores
+                  </h2>
+                  {/* Documentação: Mostra o total de colaboradores que vieram do Backend */}
+                  <span className="bg-[#F5EFEC] border border-[#E9E0E2] text-[#641C32] px-3 py-1 rounded-full text-xs font-bold shadow-sm">
+                    {employees.length}
+                  </span>
                 </div>
-                {/* Score */}
-                <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-3xl border border-slate-100 shadow-inner min-w-[200px]">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Score Organizacional</p>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-7xl font-black tracking-tighter text-slate-900">{healthScore}</span>
-                    <span className="text-xl font-bold text-slate-400">/100</span>
+                <div className="flex items-center gap-3">
+                  {canManageUsers && (
+                    <button
+                      type="button"
+                      onClick={() => setIsReportGeneratorOpen(true)}
+                      className="inline-flex rounded-full border border-[#D8C5CB] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#641C32] transition hover:bg-[#F5EFEC]"
+                    >
+                      Relatórios
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void loadUsers()}
+                    disabled={isUsersLoading}
+                    className="text-[13px] font-semibold text-[#641C32] hover:text-[#7D2943] transition-colors disabled:cursor-wait disabled:opacity-50"
+                  >
+                    {isUsersLoading ? "A atualizar..." : "Atualizar"}
+                  </button>
+                  {canManageUsers && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateEmployeeOpen(true)}
+                      className="rounded-full bg-[#641C32] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_5px_14px_rgba(100,28,50,0.18)] transition hover:bg-[#7D2943]"
+                    >
+                      + Novo colaborador
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {pendingInvitations.length > 0 && (
+                <div className="mb-5 rounded-[22px] border border-[#E9E0E2] bg-[#FAF7F4] p-5">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[#241A1D]">
+                        Aguardando ativação
+                      </p>
+                      <p className="mt-1 text-xs text-[#776A6E]">
+                        O acesso só é criado após a confirmação do e-mail e CPF.
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#641C32]">
+                      {pendingInvitations.length} pendente
+                      {pendingInvitations.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {pendingInvitations.map((invitation) => (
+                      <div
+                        key={invitation.id}
+                        className="rounded-2xl border border-[#E9E0E2] bg-white p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-[#241A1D]">
+                              {invitation.name}
+                            </p>
+                            <p className="mt-0.5 truncate text-xs text-[#776A6E]">
+                              {invitation.email}
+                            </p>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-[#F8EDEF] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#641C32]">
+                            Convite enviado
+                          </span>
+                        </div>
+                        <div className="mt-3 border-t border-[#F5EFEC] pt-3">
+                          <p className="text-xs text-[#776A6E]">
+                            {invitation.programs
+                              .map((program) => program.title)
+                              .join(", ")}
+                          </p>
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                            <span className="text-[11px] text-[#776A6E]">
+                              CPF final {invitation.cpfMasked.slice(-4)}
+                            </span>
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                disabled={sharingInvitationId === invitation.id}
+                                onClick={() =>
+                                  void handleShareInvitationWhatsApp(invitation)
+                                }
+                                className="rounded-full bg-[#1F7A4D] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#17623D] disabled:cursor-wait disabled:opacity-60"
+                              >
+                                {sharingInvitationId === invitation.id
+                                  ? "Preparando..."
+                                  : "Enviar pelo WhatsApp"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={copyingInvitationId === invitation.id}
+                                onClick={() =>
+                                  void handleCopyInvitationLink(invitation.id)
+                                }
+                                className="text-xs font-semibold text-[#641C32] hover:underline disabled:cursor-wait disabled:opacity-60"
+                              >
+                                {copyingInvitationId === invitation.id
+                                  ? "A copiar..."
+                                  : copiedInvitationId === invitation.id
+                                    ? "Link copiado"
+                                    : "Copiar link de acesso"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleRevokeInvitation(invitation.id)
+                                }
+                                className="text-xs font-semibold text-[#A50E0E] hover:underline"
+                              >
+                                Cancelar convite
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
+              )}
+
+              <div className="bg-white border border-[#E9E0E2] rounded-[24px] overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.02)]">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-[#FAF7F4] border-b border-[#E9E0E2]">
+                        <th className="p-5 text-[11px] font-bold text-[#776A6E] uppercase tracking-widest">
+                          Colaborador
+                        </th>
+                        <th className="p-5 text-[11px] font-bold text-[#776A6E] uppercase tracking-widest">
+                          Cargo / Departamento
+                        </th>
+                        <th className="p-5 text-[11px] font-bold text-[#776A6E] uppercase tracking-widest">
+                          Status
+                        </th>
+                        <th className="p-5 text-[11px] font-bold text-[#776A6E] uppercase tracking-widest">
+                          Ações
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {isUsersLoading ? (
+                        <tr>
+                          <td
+                            colSpan={4}
+                            className="p-10 text-center text-[#776A6E] text-sm"
+                          >
+                            A carregar colaboradores...
+                          </td>
+                        </tr>
+                      ) : usersError ? (
+                        <tr>
+                          <td colSpan={4} className="p-10 text-center">
+                            <p className="text-[#A50E0E] text-sm font-semibold mb-3">
+                              {usersError}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => void loadUsers()}
+                              className="text-[#641C32] text-[13px] font-semibold hover:underline"
+                            >
+                              Tentar novamente
+                            </button>
+                          </td>
+                        </tr>
+                      ) : !canManageUsers ? (
+                        <tr>
+                          <td
+                            colSpan={4}
+                            className="p-10 text-center text-[#776A6E] text-sm"
+                          >
+                            O seu perfil não possui permissão para gerir
+                            colaboradores.
+                          </td>
+                        </tr>
+                      ) : employees.length > 0 ? (
+                        employees.map((emp) => (
+                          <tr
+                            key={emp.id}
+                            className="border-b border-[#E9E0E2] last:border-none hover:bg-[#FAF7F4]/50 transition-colors"
+                          >
+                            <td className="p-5">
+                              <div className="flex items-center gap-4">
+                                {/* Avatar Criativo com as iniciais */}
+                                <div className="w-10 h-10 rounded-full bg-[#F5EFEC] border border-[#E9E0E2] text-[#641C32] flex items-center justify-center font-bold text-sm shadow-sm">
+                                  {emp.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-[#241A1D] text-sm">
+                                    {emp.name}
+                                  </p>
+                                  <p className="text-[#776A6E] text-[13px] mt-0.5">
+                                    {emp.email}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-5">
+                              <p className="font-medium text-[#241A1D] text-sm">
+                                {emp.position || "Não definido"}
+                              </p>
+                              <p className="text-[#776A6E] text-[13px] mt-0.5">
+                                {emp.department || "-"}
+                              </p>
+                            </td>
+                            <td className="p-5">
+                              {emp.isActive ? (
+                                <span className="inline-flex items-center gap-1.5 bg-[#F8EDEF]/50 border border-[#F1DFE4] text-[#641C32] px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#641C32]"></span>{" "}
+                                  Ativo
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 bg-[#FCE8E6]/50 border border-[#FAD2CF] text-[#A50E0E] px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-[#A50E0E]"></span>{" "}
+                                  Inativo
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-5">
+                              <button
+                                type="button"
+                                onClick={() => void handleViewEmployee(emp)}
+                                disabled={openingEmployeeId === emp.id}
+                                className="text-[#641C32] text-[13px] font-semibold hover:underline"
+                              >
+                                {openingEmployeeId === emp.id
+                                  ? "A abrir..."
+                                  : "Gerir perfil"}
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td
+                            colSpan={4}
+                            className="p-10 text-center text-[#776A6E] text-sm"
+                          >
+                            Ainda não existem colaboradores registados nesta
+                            empresa.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </motion.div>
-            
-            {/* O CÉREBRO DA IA APARECE AQUI */}
-            <motion.div variants={item} className="mb-10">
-              <SmartInsight type="rh_alert" delay={1800} />
-            </motion.div>
-
-            {/* 👇 AQUI ESTÁ A CORREÇÃO: Removidos os parâmetros do DailyCheckIn */}
-            <motion.div variants={item} className="mb-10">
-              <DailyCheckIn /> 
-            </motion.div>
-
-            {/* SEÇÃO DE ALERTAS INTELIGENTES */}
-            <motion.div variants={item}>
-              <div className="flex items-center gap-3 mb-6">
-                <span className="flex h-3 w-3 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
-                </span>
-                <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Alertas da Inteligência</h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <SmartAlertCard 
-                  team="Equipe de Vendas"
-                  risk="Alto Risco de Burnout"
-                  metrics={[
-                    { label: "Engajamento", value: "-18%", alert: true },
-                    { label: "Carga Horária", value: "Alta", alert: true },
-                    { label: "Recuperação", value: "Baixa", alert: true }
-                  ]}
-                  insight="A Equipe está muito acima da média de carga emocional da empresa. Detectamos um aumento consistente de sinais de exaustão e falta de pausas estruturadas nos últimos 7 dias."
-                  onAction={() => setIsAlertModalOpen(true)}
-                />
-
-                <SmartAlertCard 
-                  team="Apoio ao Cliente"
-                  risk="Fadiga Moderada"
-                  metrics={[
-                    { label: "Ansiedade", value: "+12%", alert: true },
-                    { label: "Satisfação", value: "Estável", alert: false },
-                    { label: "Turnos", value: "Irregulares", alert: true }
-                  ]}
-                  insight="Padrões irregulares de sono reportados cruzam com excesso de tickets complexos. Recomendamos revisão da escala do fim de semana."
-                  onAction={() => setIsAlertModalOpen(true)}
-                />
-              </div>
-            </motion.div>
-
           </motion.div>
         </main>
 
-        {/* =========================================
-            MODAL DE INTERVENÇÃO (MOMENTO WOW)
-            ========================================= */}
-        <AnimatePresence>
-          {isAlertModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <motion.div 
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                onClick={() => !isPlanApplied && setIsAlertModalOpen(false)}
-                className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
-              />
+        <EmployeeManagerModal
+          key={selectedEmployee?.id ?? "employee-editor-closed"}
+          isOpen={Boolean(selectedEmployee)}
+          employee={selectedEmployee}
+          managerRole={profile?.role ?? "USER"}
+          managerUserId={profile?.id}
+          onClose={() => setSelectedEmployee(null)}
+          onSaved={handleEmployeeSaved}
+        />
 
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                className="relative bg-white w-full max-w-xl rounded-[28px] shadow-2xl overflow-hidden"
-              >
-                {!isPlanApplied ? (
-                  <>
-                    <div className="bg-slate-50 p-8 border-b border-slate-100">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v10l4.5 4.5M22 12A10 10 0 1 1 2 12a10 10 0 0 1 20 0Z"/></svg>
-                        </div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Plano de Intervenção</h2>
-                      </div>
-                      <p className="text-slate-600 font-medium leading-relaxed">
-                        A nossa IA estruturou um plano imediato para a <strong className="text-slate-900">Equipe de Vendas</strong> focado na redução rápida de Burnout.
-                      </p>
-                    </div>
+        <EmployeeManagerModal
+          key={
+            isCreateEmployeeOpen
+              ? "employee-create-open"
+              : "employee-create-closed"
+          }
+          isOpen={isCreateEmployeeOpen}
+          managerRole={profile?.role ?? "USER"}
+          managerUserId={profile?.id}
+          onClose={() => setIsCreateEmployeeOpen(false)}
+          onSaved={handleEmployeeSaved}
+        />
 
-                    <div className="p-8 space-y-6">
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Diagnóstico Principal</h3>
-                        <div className="flex gap-2">
-                          <span className="bg-rose-50 text-rose-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-rose-100">Sobrecarga Emocional</span>
-                          <span className="bg-rose-50 text-rose-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-rose-100">Falta de Pausas Estruturadas</span>
-                        </div>
-                      </div>
+        <ReportGeneratorModal
+          isOpen={isReportGeneratorOpen}
+          onClose={() => setIsReportGeneratorOpen(false)}
+        />
 
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Trilhas Recomendadas</h3>
-                        <div className="space-y-3">
-                          {["Gestão de Estresse (15 min/dia)", "Inteligência Emocional (Módulo Expresso)", "Equilíbrio Vida-Trabalho (Masterclass)"].map((trilha, i) => (
-                            <div key={i} className="flex items-center gap-3 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl">
-                              <div className="w-6 h-6 rounded-full bg-indigo-500 text-white flex items-center justify-center">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6 9 17l-5-5"/></svg>
-                              </div>
-                              <span className="font-bold text-indigo-950 text-sm">{trilha}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="pt-4 flex gap-3">
-                        <button onClick={() => setIsAlertModalOpen(false)} className="px-5 py-4 rounded-2xl text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">
-                          Salvar Rascunho
-                        </button>
-                        <button onClick={handleApplyPlan} className="flex-1 px-5 py-4 rounded-2xl text-sm font-bold text-white bg-slate-900 hover:bg-black shadow-[0_8px_20px_rgba(0,0,0,0.2)] transition-all flex items-center justify-center gap-2">
-                          Aplicar para Equipe
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-                    className="p-12 text-center flex flex-col items-center justify-center"
-                  >
-                    <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-500 mb-6 shadow-inner">
-                      <motion.svg initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.8, ease: "easeOut" }} width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></motion.svg>
-                    </div>
-                    <h2 className="text-3xl font-black text-slate-900 mb-3 tracking-tight">Plano Aplicado!</h2>
-                    <p className="text-slate-500 font-medium text-lg leading-relaxed max-w-xs mx-auto">
-                      Acompanharemos a evolução da equipe nos próximos dias. Notificações foram enviadas.
-                    </p>
-                  </motion.div>
-                )}
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-
-        <ProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
-        
+        <ProfileModal
+          isOpen={isProfileOpen}
+          onClose={() => setIsProfileOpen(false)}
+        />
       </div>
     </div>
   );
