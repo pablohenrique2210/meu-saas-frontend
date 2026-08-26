@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { apiAssetUrl, apiUrl } from "@/lib/api-config";
+import { inspectVideoFile } from "@/lib/video-file";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -405,6 +406,44 @@ export function CourseEditor({
       setIsUploadingFiles(false);
       showToast("Falha no upload.", "error");
       return null;
+    }
+  };
+
+  const handleVideoUpload = async (
+    modId: string,
+    lessonId: string,
+    file: File | undefined,
+  ) => {
+    if (!file) return;
+    try {
+      const metadata = await inspectVideoFile(file);
+      const upload = await handleFileUpload(file);
+      if (!upload) return;
+      setModules((current) =>
+        current.map((module) =>
+          module.id === modId
+            ? {
+                ...module,
+                lessons: module.lessons.map((lesson) =>
+                  lesson.id === lessonId
+                    ? {
+                        ...lesson,
+                        contentUrl: upload.url,
+                        duration: metadata.durationMinutes,
+                        minimumWatchSeconds: metadata.durationSeconds,
+                      }
+                    : lesson,
+                ),
+              }
+            : module,
+        ),
+      );
+      showToast(`Vídeo válido: ${metadata.durationMinutes} min.`, "success");
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "Vídeo inválido.",
+        "error",
+      );
     }
   };
 
@@ -933,18 +972,14 @@ export function CourseEditor({
                                   </div>
                                   <input
                                     type="file"
-                                    accept="video/*"
+                                    accept=".mp4,.webm,.ogg,video/mp4,video/webm,video/ogg"
                                     onChange={async (e) => {
-                                      const upload = await handleFileUpload(
+                                      await handleVideoUpload(
+                                        mod.id,
+                                        lesson.id,
                                         e.target.files?.[0],
                                       );
-                                      if (upload)
-                                        updateLesson(
-                                          mod.id,
-                                          lesson.id,
-                                          "contentUrl",
-                                          upload.url,
-                                        );
+                                      e.target.value = "";
                                     }}
                                     className="text-sm text-slate-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#F5EFEC] file:text-[#641C32] file:cursor-pointer hover:file:bg-[#E9E0E2]"
                                   />

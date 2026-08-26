@@ -135,6 +135,7 @@ export default function TelaDeAula() {
   const [canComplete, setCanComplete] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [progressError, setProgressError] = useState("");
+  const [videoError, setVideoError] = useState("");
   const [downloadingMaterial, setDownloadingMaterial] = useState<string | null>(null);
 
   // 🚀 Modal de contato com a consultora (botão "Dúvidas?")
@@ -222,6 +223,7 @@ export default function TelaDeAula() {
         ) {
           setActiveModule(courseData.modules[0]);
           setActiveLesson(courseData.modules[0].lessons[0]);
+          setVideoError("");
         }
       } catch {
         setError("Não foi possível carregar a aula. Verifica o backend.");
@@ -492,6 +494,7 @@ export default function TelaDeAula() {
     }
     setActiveModule(mod);
     setActiveLesson(less);
+    setVideoError("");
     setIsCompleted(completedLessonIds.includes(less.id));
     setWatchedSeconds(0);
     setMinimumWatchSeconds(less.minimumWatchSeconds ?? 0);
@@ -767,8 +770,15 @@ export default function TelaDeAula() {
                       <video
                         ref={videoRef}
                         src={apiAssetUrl(activeLesson.contentUrl)}
+                        preload="metadata"
                         controls
                         controlsList="nodownload"
+                        onLoadedMetadata={() => setVideoError("")}
+                        onError={() =>
+                          setVideoError(
+                            "Não foi possível abrir este vídeo. Reenvie um MP4 com codec H.264 e áudio AAC.",
+                          )
+                        }
                         onTimeUpdate={handleTimeUpdate}
                         onEnded={() => {
                           if (videoRef.current) {
@@ -795,6 +805,15 @@ export default function TelaDeAula() {
                         className="mb-4 opacity-50 text-rose-400"
                       />
                       <p className="font-bold text-lg">Vídeo Indisponível</p>
+                    </div>
+                  )}
+                  {videoError && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/85 px-8 text-center text-white">
+                      <div className="max-w-md">
+                        <PlayCircle size={44} className="mx-auto mb-4 text-rose-300" />
+                        <p className="font-bold">Vídeo incompatível ou indisponível</p>
+                        <p className="mt-2 text-sm text-white/75">{videoError}</p>
+                      </div>
                     </div>
                   )}
                   {!isNativeVideo(activeLesson.contentUrl || "") && (

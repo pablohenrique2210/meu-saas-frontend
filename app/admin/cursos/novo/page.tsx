@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { apiAssetUrl, apiUrl } from '@/lib/api-config';
+import { inspectVideoFile } from '@/lib/video-file';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, LayoutGrid, FileText, Image as ImageIcon,
@@ -66,6 +67,27 @@ export default function TelaDeCriacao() {
       if (!res.ok) throw new Error("Erro no upload");
       const data = await res.json() as UploadedMaterial; setIsUploadingFiles(false); showToast(`Upload concluído!`, 'success'); return data;
     } catch (err) { setIsUploadingFiles(false); showToast("Falha no upload.", 'error'); return null; }
+  };
+
+  const handleVideoUpload = async (modId: string, lessonId: string, file: File | undefined) => {
+    if (!file) return;
+    try {
+      const metadata = await inspectVideoFile(file);
+      const upload = await handleFileUpload(file);
+      if (!upload) return;
+      setModules(current => current.map(m => m.id === modId ? {
+        ...m,
+        lessons: m.lessons.map(l => l.id === lessonId ? {
+          ...l,
+          contentUrl: upload.url,
+          duration: metadata.durationMinutes,
+          minimumWatchSeconds: metadata.durationSeconds,
+        } : l),
+      } : m));
+      showToast(`Vídeo válido: ${metadata.durationMinutes} min.`, 'success');
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Vídeo inválido.', 'error');
+    }
   };
 
   // 🚀 AQUI ESTÁ A GRANDE DIFERENÇA: Fazemos POST para criar!
@@ -229,7 +251,7 @@ export default function TelaDeCriacao() {
                               {lesson.type === 'VIDEO' && lesson.videoMode === 'UPLOAD' ? (
                                 <div className="w-full flex items-center justify-between">
                                   <div className="flex items-center gap-2"><Video size={18} className="text-[#641C32]"/><span className="text-sm font-bold text-slate-700">{lesson.contentUrl ? '✅ Vídeo já enviado. Alterar:' : 'Selecione o vídeo:'}</span></div>
-                                  <input type="file" accept="video/*" onChange={async (e) => { const upload = await handleFileUpload(e.target.files?.[0]); if(upload) updateLesson(mod.id, lesson.id, 'contentUrl', upload.url); }} className="text-sm text-slate-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#F5EFEC] file:text-[#641C32] file:cursor-pointer hover:file:bg-[#E9E0E2]" />
+                                  <input type="file" accept=".mp4,.webm,.ogg,video/mp4,video/webm,video/ogg" onChange={async (e) => { await handleVideoUpload(mod.id, lesson.id, e.target.files?.[0]); e.target.value = ''; }} className="text-sm text-slate-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#F5EFEC] file:text-[#641C32] file:cursor-pointer hover:file:bg-[#E9E0E2]" />
                                 </div>
                               ) : lesson.type === 'VIDEO' && lesson.videoMode === 'LINK' ? (
                                 <div className="w-full flex items-center gap-2"><LinkIcon size={16} className="text-slate-400"/><input type="text" value={lesson.contentUrl} onChange={e => updateLesson(mod.id, lesson.id, 'contentUrl', e.target.value)} placeholder="Cole o Link (ex: Youtube)" className="w-full bg-transparent outline-none text-sm font-medium" /></div>
