@@ -160,7 +160,7 @@ export default function ReportGeneratorModal({ isOpen, onClose }: Props) {
                 disabled={isLoading && courses.length === 0}
                 className="w-full rounded-2xl border border-[#E9E0E2] bg-white px-4 py-3.5 text-sm font-semibold text-[#241A1D] outline-none transition focus:border-[#641C32]"
               >
-                {courses.length === 0 && <option value="">Nenhum curso atribuído</option>}
+                {courses.length === 0 && <option value="">Nenhum curso cadastrado</option>}
                 {courses.map((course) => (
                   <option key={course.id} value={course.id}>
                     {course.title} — {course.collaboratorsAssigned} colaborador(es)
@@ -180,6 +180,11 @@ export default function ReportGeneratorModal({ isOpen, onClose }: Props) {
                 </div>
               ) : preview ? (
                 <div className="mt-7 space-y-7">
+                  {preview.summary.collaboratorsAssigned === 0 && (
+                    <div className="rounded-2xl border border-[#E8D7B9] bg-[#FFF9ED] px-4 py-3 text-sm text-[#765A2B]">
+                      Este curso ainda não foi disponibilizado a nenhum colaborador desta empresa. O diagnóstico pode ser baixado, mas permanecerá sem dados de aproveitamento até que um acesso seja atribuído.
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                     {[
                       ["Progresso médio", `${preview.summary.averageProgress}%`],
@@ -281,13 +286,16 @@ export default function ReportGeneratorModal({ isOpen, onClose }: Props) {
                           </div>
                         </div>
                       ))}
+                      {preview.collaborators.length === 0 && (
+                        <p className="text-sm text-[#776A6E]">Nenhum colaborador atribuído a este curso.</p>
+                      )}
                     </div>
                   </section>
                 </div>
               ) : !isLoading && courses.length === 0 ? (
                 <div className="mt-6 rounded-[22px] border border-dashed border-[#D9C9CD] bg-white p-10 text-center">
-                  <p className="font-semibold text-[#241A1D]">Ainda não há curso com colaborador atribuído.</p>
-                  <p className="mt-2 text-sm text-[#776A6E]">Disponibilize um programa para um colaborador e volte a esta área.</p>
+                  <p className="font-semibold text-[#241A1D]">Ainda não há cursos cadastrados.</p>
+                  <p className="mt-2 text-sm text-[#776A6E]">Crie ou importe um curso e volte a esta área.</p>
                 </div>
               ) : null}
             </div>
