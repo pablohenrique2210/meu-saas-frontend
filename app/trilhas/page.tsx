@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
-import { Loader2 } from "lucide-react";
 import { API_BASE_URL, apiAssetUrl } from "@/lib/api-config";
 
 // 🚀 1. INTERFACE CORRIGIDA (Separamos Módulos de Aulas)
@@ -19,6 +18,31 @@ interface Course {
   status: "em_andamento" | "concluido" | "nao_iniciado";
   totalMinutes: number;
   coverUrl?: string;
+}
+
+interface ApiLesson {
+  id: string;
+  duration?: number | string | null;
+}
+
+interface ApiModule {
+  lessons?: ApiLesson[];
+}
+
+interface ApiCourse {
+  id: string;
+  title: string;
+  description?: string | null;
+  category: string;
+  author?: string | null;
+  coverUrl?: string;
+  modules?: ApiModule[];
+}
+
+interface ApiProgress {
+  lessonId: string;
+  isCompleted?: boolean;
+  lastTime?: number;
 }
 
 const getCategoryGradient = (category: string) => {
@@ -63,34 +87,35 @@ export default function TrilhasPremium() {
 
         if (!coursesRes.ok) throw new Error("Falha ao carregar");
 
-        const coursesData = await coursesRes.json();
-        const progressData = progressRes.ok ? await progressRes.json() : [];
+        const coursesData = (await coursesRes.json()) as ApiCourse[];
+        const progressData = progressRes.ok
+          ? ((await progressRes.json()) as ApiProgress[])
+          : [];
 
-        const formattedCourses: Course[] = coursesData.map((course: any) => {
+        const formattedCourses: Course[] = coursesData.map((course) => {
           // 🚀 2. MATEMÁTICA À PROVA DE BALAS PARA STATUS E MÓDULOS
           const modulesCount = course.modules?.length || 0;
           const courseLessonIds =
-            course.modules?.flatMap((m: any) =>
-              m.lessons.map((l: any) => l.id),
+            course.modules?.flatMap((module) =>
+              (module.lessons ?? []).map((lesson) => lesson.id),
             ) || [];
           const totalMinutes =
             course.modules
-              ?.flatMap((m: any) => m.lessons)
+              ?.flatMap((module) => module.lessons ?? [])
               .reduce(
-                (total: number, lesson: any) =>
-                  total + (Number(lesson.duration) || 0),
+                (total, lesson) => total + (Number(lesson.duration) || 0),
                 0,
               ) || 0;
           const totalLessons = courseLessonIds.length;
 
-          const courseProgress = progressData.filter((p: any) =>
-            courseLessonIds.includes(p.lessonId),
+          const courseProgress = progressData.filter((progress) =>
+            courseLessonIds.includes(progress.lessonId),
           );
           const completedLessons = courseProgress.filter(
-            (p: any) => p.isCompleted,
+            (progress) => progress.isCompleted,
           ).length;
           const hasStarted = courseProgress.some(
-            (p: any) => p.lastTime > 0 || p.isCompleted,
+            (progress) => (progress.lastTime ?? 0) > 0 || progress.isCompleted,
           );
 
           let status: "nao_iniciado" | "em_andamento" | "concluido" =
@@ -127,7 +152,7 @@ export default function TrilhasPremium() {
         });
 
         setTrilhas(formattedCourses);
-      } catch (err) {
+      } catch {
         setError(
           "Não foi possível carregar o catálogo. O servidor está ligado?",
         );
@@ -271,7 +296,7 @@ export default function TrilhasPremium() {
                 </span>
               </div>
               {trilhasFiltradas.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 lg:gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-7 lg:gap-8">
                   {trilhasFiltradas.map((curso) => (
                     <CourseCard key={curso.id} curso={curso} />
                   ))}
@@ -301,124 +326,157 @@ function CourseCard({
 }) {
   const [imgError, setImgError] = useState(false);
   const hasValidUrl = Boolean(curso.coverUrl?.trim());
+  const normalizedTitle = curso.title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const isLeadershipProgram = normalizedTitle.includes("lider em acao");
+  const coverSrc =
+    !imgError && hasValidUrl
+      ? apiAssetUrl(curso.coverUrl)
+      : isLeadershipProgram
+        ? "/courses/lider-em-acao-cover.png"
+        : null;
+  const description = isLeadershipProgram
+    ? "Aprenda a liderar com empatia e resiliência, promovendo um ambiente de trabalho saudável e de alto desempenho para você e sua equipe."
+    : curso.subtitle?.trim() ||
+      "Conhecimento aplicado para transformar o cuidado com as pessoas em resultados consistentes.";
+  const instructorName = curso.author?.trim() || "Lilian Arruda";
+  const instructorRole = isLeadershipProgram
+    ? "Especialista em Liderança Humanizada"
+    : "Educação e Saúde Corporativa";
+  const tags = isLeadershipProgram
+    ? ["Bem-estar", "Performance", "Empatia"]
+    : [getCategoryLabel(curso.category), "Desenvolvimento"];
 
   const getButtonText = () => {
-    if (curso.status === "concluido") return "Rever Curso";
+    if (curso.status === "concluido") return "Rever";
     if (curso.status === "em_andamento") return "Continuar";
     return "Acessar";
   };
 
   return (
-    <div className="group relative flex flex-col bg-white rounded-[2rem] border border-[#E9E0E2] overflow-hidden shadow-[0_8px_20px_rgba(0,0,0,0.03)] hover:shadow-[0_20px_40px_rgba(100,28,50,0.12)] hover:-translate-y-2 transition-all duration-500 cursor-pointer h-full">
-      <div
-        className={`relative w-full p-6 flex flex-col justify-between overflow-hidden ${isMain ? "aspect-[4/3] md:aspect-video" : "aspect-[4/5] sm:aspect-[4/3]"}`}
-      >
-        {!imgError && hasValidUrl ? (
+    <article
+      className={`group relative isolate flex h-full min-h-[530px] flex-col overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-[0_18px_55px_rgba(51,34,39,0.12)] transition-all duration-500 ease-out hover:-translate-y-2 hover:shadow-[0_28px_75px_rgba(100,28,50,0.22)] ${isMain ? "md:min-h-[510px]" : ""}`}
+    >
+      <div className="pointer-events-none absolute -inset-24 -z-10 rounded-full bg-[#A43B5D]/20 opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-100" />
+
+      <div className="relative flex min-h-[335px] flex-1 flex-col overflow-hidden px-6 pb-7 pt-6 sm:px-7">
+        {coverSrc ? (
           <img
-            src={apiAssetUrl(curso.coverUrl)}
-            alt={curso.title}
+            src={coverSrc}
+            alt={`Capa do curso ${curso.title}`}
             onError={() => setImgError(true)}
-            // 🚀 AJUSTE AQUI: Adicionado "object-top" para manter o rosto sempre visível e não cortar a testa!
-            className="absolute inset-0 w-full h-full object-cover object-top"
+            className="absolute inset-0 h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-[1.035]"
           />
         ) : (
           <div
             className={`absolute inset-0 bg-gradient-to-br ${getCategoryGradient(curso.category)}`}
-          ></div>
+          />
         )}
-        <div className="absolute inset-0 bg-black/20 mix-blend-overlay opacity-50 group-hover:opacity-30 transition-opacity duration-500"></div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent"></div>
 
-        <div className="relative z-10 flex justify-between items-start">
-          <span className="bg-white/20 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full border border-white/30">{getCategoryLabel(curso.category)}</span>
+        <div className="absolute inset-0 bg-[linear-gradient(100deg,rgba(25,17,20,0.96)_0%,rgba(38,20,27,0.88)_48%,rgba(36,26,29,0.2)_100%)]" />
+        <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(125deg,transparent_0%,transparent_47%,rgba(255,255,255,.26)_47.3%,transparent_47.8%,transparent_65%,rgba(221,177,93,.4)_65.3%,transparent_65.8%)] [background-size:170px_170px] transition-transform duration-700 group-hover:translate-x-2" />
+
+        <div className="relative z-10 flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] font-bold uppercase tracking-[0.15em] text-white/85 sm:text-[10px]">
+          {tags.map((tag, index) => (
+            <React.Fragment key={tag}>
+              {index > 0 && <span className="text-[#E0B965]">|</span>}
+              <span>{tag}</span>
+            </React.Fragment>
+          ))}
         </div>
 
-        <div className="relative z-10 mt-auto transform group-hover:translate-y-[-4px] transition-transform duration-500">
-          {curso.subtitle && (
-            <p className="text-white/80 font-medium text-xs md:text-sm mb-1 line-clamp-1">
-              {curso.subtitle}
-            </p>
-          )}
-          <h3 className="font-serif text-2xl md:text-3xl text-white leading-tight mb-2 text-shadow-sm line-clamp-2">
+        <div className="relative z-10 mt-auto max-w-[92%] translate-y-0 transition-transform duration-500 group-hover:-translate-y-1">
+          <h3 className="mb-4 font-serif text-[2rem] leading-[0.98] text-white drop-shadow-sm sm:text-[2.35rem]">
             {curso.title}
           </h3>
-          {curso.author && (
-            <p className="text-white/90 text-xs md:text-sm font-semibold flex items-center gap-2">
-              <span className="w-4 h-0.5 bg-white/50 rounded-full"></span>{" "}
-              {curso.author}
-            </p>
-          )}
+          <p className="max-w-xl text-sm font-medium leading-relaxed text-white/90 sm:text-[15px]">
+            {description}
+          </p>
         </div>
       </div>
 
-      <div className="p-6 flex flex-col flex-1 bg-white relative">
+      <div className="relative flex flex-col bg-white px-6 pb-5 pt-5 sm:px-7">
         {curso.progress > 0 && (
-          <div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-100">
+          <div className="absolute left-0 right-0 top-0 h-1 bg-[#EEE6E8]">
             <div
-              className="h-full bg-[#641C32] transition-all duration-1000 ease-out"
+              className="h-full bg-gradient-to-r from-[#641C32] to-[#B35C76] transition-all duration-1000 ease-out"
               style={{ width: `${curso.progress}%` }}
-            ></div>
+            />
           </div>
         )}
 
-        <div className="flex items-center justify-between text-xs font-bold text-[#776A6E] uppercase tracking-wider mb-5 mt-2">
-          {/* MÓDULOS REAIS */}
-          <span className="flex items-center gap-1.5">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>{" "}
-            {curso.modulesCount} Módulos
-          </span>
-          {/* PROGRESSO OU AULAS */}
-          <span>
-            {curso.progress > 0
-              ? `${curso.progress}% Concluído`
-              : `${curso.lessonsCount} Aulas`}
-          </span>
+        <div className="flex min-w-0 items-center gap-3 border-b border-[#EEE7E4] pb-4">
+          <img
+            src="/consultora/lilian-arruda-retrato.jpg"
+            alt="Lilian Arruda"
+            className="h-11 w-11 shrink-0 rounded-full border-2 border-white object-cover object-top shadow-[0_3px_12px_rgba(36,26,29,.16)]"
+          />
+          <p className="min-w-0 text-[13px] leading-snug text-[#594C50]">
+            <strong className="font-bold text-[#241A1D]">
+              {instructorName}
+            </strong>
+            <span className="mx-1 text-[#B9ADB0]">|</span>
+            <span>{instructorRole}</span>
+          </p>
         </div>
 
-        <div className="mt-auto">
-          <div className="flex items-center justify-between border-t border-[#F5EFEC] pt-4">
-            <div className="text-xs font-bold text-[#776A6E]">
-              {curso.totalMinutes > 0
-                ? `${curso.totalMinutes} min cadastrados`
-                : null}
-            </div>
-            <span
-              className={`text-sm font-bold transition-colors flex items-center gap-1 ${curso.status === "concluido" ? "text-amber-500" : "text-[#241A1D] group-hover:text-[#641C32]"}`}
-            >
-              {getButtonText()}{" "}
+        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold uppercase tracking-[0.08em] text-[#776A6E]">
+            <span className="flex items-center gap-1.5">
               <svg
-                width="16"
-                height="16"
+                width="15"
+                height="15"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="transform group-hover:translate-x-1 transition-transform"
+                strokeWidth="2"
+                aria-hidden="true"
               >
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M8 2v4M16 2v4M3 10h18" />
               </svg>
+              {curso.modulesCount} módulos
             </span>
+            <span
+              aria-hidden="true"
+              className="h-1 w-1 rounded-full bg-[#C7BABD]"
+            />
+            <span>{curso.lessonsCount} aulas</span>
+            {curso.progress > 0 && <span>{curso.progress}% concluído</span>}
           </div>
+
+          <span className="relative inline-flex min-h-11 shrink-0 items-center justify-center gap-2 overflow-hidden rounded-full bg-[#641C32] px-5 text-[11px] font-bold uppercase tracking-[0.08em] text-white shadow-[0_8px_22px_rgba(100,28,50,.25)] transition-all duration-300 group-hover:bg-[#7A223E] group-hover:shadow-[0_12px_28px_rgba(100,28,50,.34)]">
+            <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+            <span className="relative">{getButtonText()} conteúdo</span>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="relative transition-transform duration-300 group-hover:translate-x-1"
+              aria-hidden="true"
+            >
+              <path d="M5 12h14" />
+              <path d="m13 6 6 6-6 6" />
+            </svg>
+          </span>
         </div>
       </div>
-      <Link href={`/aula/${curso.id}`} className="absolute inset-0 z-30">
-        <span className="sr-only">Acessar curso</span>
+
+      <Link
+        href={`/aula/${curso.id}`}
+        className="absolute inset-0 z-30 rounded-[2rem] focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-[#641C32]"
+      >
+        <span className="sr-only">
+          {getButtonText()} conteúdo de {curso.title}
+        </span>
       </Link>
-    </div>
+    </article>
   );
 }
