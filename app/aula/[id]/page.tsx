@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useAuth, useUser } from "@clerk/nextjs";
+import { useAuth, useUser, UserButton } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Loader2,
@@ -20,6 +20,12 @@ import {
   X,
   MessageCircle,
   Mail,
+  Moon,
+  Sun,
+  ChevronDown,
+  RotateCcw,
+  RotateCw,
+  NotebookPen,
 } from "lucide-react";
 import { API_BASE_URL, apiAssetUrl, apiUrl } from "@/lib/api-config";
 
@@ -137,6 +143,10 @@ export default function TelaDeAula() {
   const [progressError, setProgressError] = useState("");
   const [videoError, setVideoError] = useState("");
   const [downloadingMaterial, setDownloadingMaterial] = useState<string | null>(null);
+  const [isNightMode, setIsNightMode] = useState(false);
+  const [isNotesOpen, setIsNotesOpen] = useState(false);
+  const [lessonNotes, setLessonNotes] = useState("");
+  const [playbackRate, setPlaybackRate] = useState(1);
 
   // 🚀 Modal de contato com a consultora (botão "Dúvidas?")
   const [isSupportOpen, setIsSupportOpen] = useState(false);
@@ -147,6 +157,52 @@ export default function TelaDeAula() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSavedTime = useRef(0);
   const isSavingProgress = useRef(false);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setIsNightMode(localStorage.getItem("lesson-night-mode") === "true");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  useEffect(() => {
+    if (!activeLesson) return;
+    const frame = requestAnimationFrame(() => {
+      setLessonNotes(
+        localStorage.getItem(`lesson-notes:${activeLesson.id}`) ?? "",
+      );
+      setIsNotesOpen(false);
+      setPlaybackRate(1);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeLesson]);
+
+  const toggleNightMode = () => {
+    setIsNightMode((current) => {
+      const next = !current;
+      localStorage.setItem("lesson-night-mode", String(next));
+      return next;
+    });
+  };
+
+  const updateLessonNotes = (value: string) => {
+    setLessonNotes(value);
+    if (activeLesson) {
+      localStorage.setItem(`lesson-notes:${activeLesson.id}`, value);
+    }
+  };
+
+  const seekVideo = (seconds: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const duration = Number.isFinite(video.duration) ? video.duration : Infinity;
+    video.currentTime = Math.max(0, Math.min(duration, video.currentTime + seconds));
+  };
+
+  const changePlaybackRate = (rate: number) => {
+    setPlaybackRate(rate);
+    if (videoRef.current) videoRef.current.playbackRate = rate;
+  };
 
   const downloadMaterial = async (url: string, title: string) => {
     const filename = uploadedFilename(url);
@@ -522,6 +578,12 @@ export default function TelaDeAula() {
         (result) => result.gameType === activeModule.gameType,
       ),
   );
+  const completedCourseLessons = allLessons.filter((lesson) =>
+    completedLessonIds.includes(lesson.id),
+  ).length;
+  const courseProgressPercent = allLessons.length
+    ? Math.round((completedCourseLessons / allLessons.length) * 100)
+    : 0;
 
   if (isLoading)
     return (
@@ -541,7 +603,9 @@ export default function TelaDeAula() {
     );
 
   return (
-    <div className="flex h-screen bg-[#FAF7F4] font-sans text-[#241A1D] selection:bg-[#641C32] selection:text-white overflow-hidden">
+    <div
+      className={`flex h-screen font-sans selection:bg-[#641C32] selection:text-white overflow-hidden transition-colors duration-300 ${isNightMode ? "bg-[#211B26] text-[#F7F1EE]" : "bg-[#FAF7F4] text-[#241A1D]"}`}
+    >
       {/* MODAL: FALE COM A CONSULTORA */}
       <AnimatePresence>
         {isSupportOpen && (
@@ -732,8 +796,10 @@ export default function TelaDeAula() {
 
       {/* 2. ÁREA PRINCIPAL (IGUAL) */}
       <main className="flex-1 flex flex-col h-screen overflow-y-auto relative scroll-smooth">
-        <header className="sticky top-0 bg-[#F5EFEC]/80 backdrop-blur-md z-30 px-8 py-5 flex items-center justify-between border-b border-[#E9E0E2]/50">
-          <div className="flex items-center gap-4">
+        <header
+          className={`sticky top-0 z-30 flex items-center justify-between border-b px-4 py-3 backdrop-blur-md transition-colors md:px-8 md:py-4 ${isNightMode ? "border-white/10 bg-[#2B2430]/90" : "border-[#E9E0E2]/60 bg-[#F5EFEC]/90"}`}
+        >
+          <div className="flex min-w-0 items-center gap-3 md:gap-4">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               className="hidden lg:flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#E9E0E2] transition-colors text-[#776A6E]"
@@ -747,22 +813,62 @@ export default function TelaDeAula() {
                 }
               />
             </button>
-            <span className="text-xs font-bold text-[#776A6E] uppercase tracking-widest bg-white px-3 py-1 rounded-full shadow-sm border border-[#E9E0E2]">
-              {activeModule?.title || "Aula"}
-            </span>
+            <Link
+              href="/trilhas"
+              aria-label="Voltar às trilhas"
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition lg:hidden ${isNightMode ? "bg-white/10 text-white" : "bg-white text-[#641C32] shadow-sm"}`}
+            >
+              <ArrowLeft size={17} />
+            </Link>
+            <div className="min-w-0">
+              <span
+                className={`inline-flex max-w-[50vw] truncate rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-widest shadow-sm md:text-xs ${isNightMode ? "border-white/10 bg-white/10 text-white/75" : "border-[#E9E0E2] bg-white text-[#776A6E]"}`}
+              >
+                {activeModule?.title || "Aula"}
+              </span>
+              <p className={`mt-1 hidden max-w-[55vw] truncate text-xs font-semibold sm:block lg:hidden ${isNightMode ? "text-white/60" : "text-[#776A6E]"}`}>
+                {course.title}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleNightMode}
+              aria-label={isNightMode ? "Desativar modo noturno" : "Ativar modo noturno"}
+              title={isNightMode ? "Desativar modo noturno" : "Ativar modo noturno"}
+              className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${isNightMode ? "border-white/10 bg-white/10 text-amber-200 hover:bg-white/15" : "border-[#E9E0E2] bg-white text-[#641C32] hover:bg-[#F5EFEC]"}`}
+            >
+              {isNightMode ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+            <UserButton />
           </div>
         </header>
 
-        <div className="max-w-4xl mx-auto w-full px-6 md:px-12 pt-8 pb-32">
+        <div className="max-w-4xl mx-auto w-full px-4 md:px-12 pt-6 md:pt-8 pb-44 md:pb-36">
           {activeLesson ? (
             <>
-              <h1 className="font-serif text-3xl md:text-4xl text-[#241A1D] mb-6 tracking-tight">
+              <p className={`mb-2 text-[11px] font-bold uppercase tracking-[0.16em] md:text-xs ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}>
+                {course.title}
+              </p>
+              <h1 className={`font-serif text-[2rem] leading-tight md:text-4xl mb-3 tracking-tight ${isNightMode ? "text-[#FFF9F5]" : "text-[#241A1D]"}`}>
                 {activeLesson.title}
               </h1>
+              <div className="mb-5 flex items-center gap-3">
+                <div className={`h-1.5 flex-1 overflow-hidden rounded-full ${isNightMode ? "bg-white/10" : "bg-[#E9E0E2]"}`}>
+                  <div
+                    className="h-full rounded-full bg-[#7D2943] transition-[width] duration-500"
+                    style={{ width: `${courseProgressPercent}%` }}
+                  />
+                </div>
+                <span className={`text-[11px] font-bold tabular-nums ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}>
+                  {courseProgressPercent}%
+                </span>
+              </div>
 
               {activeLesson.type === "VIDEO" ? (
                 <div
-                  className={`transition-all duration-500 bg-black overflow-hidden flex items-center justify-center ${isFullscreen ? "fixed inset-0 z-50 w-screen h-screen" : "w-full aspect-video rounded-[2rem] relative shadow-[0_20px_50px_rgba(100,28,50,0.15)] mb-10 group"}`}
+                  className={`transition-all duration-500 bg-black overflow-hidden flex items-center justify-center ${isFullscreen ? "fixed inset-0 z-50 w-screen h-screen" : "w-full aspect-video rounded-[1.4rem] md:rounded-[2rem] relative shadow-[0_20px_50px_rgba(100,28,50,0.15)] mb-3 group"}`}
                 >
                   {activeLesson.contentUrl &&
                   activeLesson.contentUrl.trim() !== "" ? (
@@ -773,7 +879,12 @@ export default function TelaDeAula() {
                         preload="metadata"
                         controls
                         controlsList="nodownload"
-                        onLoadedMetadata={() => setVideoError("")}
+                        onLoadedMetadata={() => {
+                          setVideoError("");
+                          if (videoRef.current) {
+                            videoRef.current.playbackRate = playbackRate;
+                          }
+                        }}
                         onError={() =>
                           setVideoError(
                             "Não foi possível abrir este vídeo. Reenvie um MP4 com codec H.264 e áudio AAC.",
@@ -805,6 +916,9 @@ export default function TelaDeAula() {
                         className="mb-4 opacity-50 text-rose-400"
                       />
                       <p className="font-bold text-lg">Vídeo Indisponível</p>
+                      <p className="mt-2 text-sm text-white/60">
+                        O conteúdo em vídeo ainda não foi publicado nesta aula.
+                      </p>
                     </div>
                   )}
                   {videoError && (
@@ -852,6 +966,72 @@ export default function TelaDeAula() {
                   )}
                 </div>
               )}
+
+              {activeLesson.type === "VIDEO" &&
+                isNativeVideo(activeLesson.contentUrl || "") &&
+                !videoError && (
+                  <div className={`mb-4 flex items-center justify-between rounded-2xl border px-3 py-2.5 ${isNightMode ? "border-white/10 bg-white/5" : "border-[#E9E0E2] bg-white"}`}>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => seekVideo(-10)}
+                        className={`flex h-10 items-center gap-1 rounded-xl px-3 text-xs font-bold transition ${isNightMode ? "text-white/75 hover:bg-white/10" : "text-[#641C32] hover:bg-[#F5EFEC]"}`}
+                        aria-label="Voltar 10 segundos"
+                      >
+                        <RotateCcw size={17} /> 10s
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => seekVideo(10)}
+                        className={`flex h-10 items-center gap-1 rounded-xl px-3 text-xs font-bold transition ${isNightMode ? "text-white/75 hover:bg-white/10" : "text-[#641C32] hover:bg-[#F5EFEC]"}`}
+                        aria-label="Avançar 10 segundos"
+                      >
+                        10s <RotateCw size={17} />
+                      </button>
+                    </div>
+                    <label className={`flex items-center gap-2 text-xs font-bold ${isNightMode ? "text-white/65" : "text-[#776A6E]"}`}>
+                      <span className="hidden sm:inline">Velocidade</span>
+                      <select
+                        value={playbackRate}
+                        onChange={(event) => changePlaybackRate(Number(event.target.value))}
+                        className={`rounded-lg border px-2 py-1.5 outline-none ${isNightMode ? "border-white/10 bg-[#2B2430] text-white" : "border-[#E9E0E2] bg-[#FAF7F4] text-[#241A1D]"}`}
+                      >
+                        {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
+                          <option key={rate} value={rate}>{rate}x</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                )}
+
+              <section className={`mb-8 overflow-hidden rounded-2xl border transition-colors ${isNightMode ? "border-white/10 bg-white/5" : "border-[#E9E0E2] bg-white"}`}>
+                <button
+                  type="button"
+                  onClick={() => setIsNotesOpen((current) => !current)}
+                  className={`flex w-full items-center justify-between px-4 py-4 text-left text-sm font-bold ${isNightMode ? "text-white" : "text-[#241A1D]"}`}
+                  aria-expanded={isNotesOpen}
+                >
+                  <span className="flex items-center gap-2">
+                    <NotebookPen size={18} className={isNightMode ? "text-rose-200" : "text-[#641C32]"} />
+                    Notas da aula
+                  </span>
+                  <ChevronDown size={18} className={`transition-transform ${isNotesOpen ? "rotate-180" : ""}`} />
+                </button>
+                {isNotesOpen && (
+                  <div className="px-4 pb-4">
+                    <textarea
+                      value={lessonNotes}
+                      onChange={(event) => updateLessonNotes(event.target.value)}
+                      rows={5}
+                      placeholder="Registre aqui os principais aprendizados desta aula..."
+                      className={`w-full resize-y rounded-xl border p-3 text-sm leading-relaxed outline-none transition focus:border-[#7D2943] ${isNightMode ? "border-white/10 bg-black/15 text-white placeholder:text-white/35" : "border-[#E9E0E2] bg-[#FAF7F4] text-[#241A1D] placeholder:text-[#9B8D91]"}`}
+                    />
+                    <p className={`mt-2 text-[11px] ${isNightMode ? "text-white/45" : "text-[#776A6E]"}`}>
+                      As notas ficam salvas neste dispositivo.
+                    </p>
+                  </div>
+                )}
+              </section>
 
               {activeLesson.attachments &&
                 activeLesson.attachments.length > 0 && (
@@ -901,18 +1081,18 @@ export default function TelaDeAula() {
 
         {/* 3. BARRA INFERIOR */}
         <div
-          className={`fixed bottom-0 right-0 bg-white border-t border-[#E9E0E2] p-4 md:p-6 px-6 md:px-12 flex items-center justify-between z-40 shadow-[0_-10px_40px_rgba(0,0,0,0.03)] transition-all duration-500 ${isSidebarOpen ? "left-0 lg:left-80" : "left-0"}`}
+          className={`fixed bottom-0 right-0 z-40 flex items-stretch justify-between gap-3 border-t p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-10px_40px_rgba(0,0,0,0.06)] transition-all duration-500 md:items-center md:p-6 md:px-12 ${isNightMode ? "border-white/10 bg-[#2B2430]" : "border-[#E9E0E2] bg-white"} ${isSidebarOpen ? "left-0 lg:left-80" : "left-0"}`}
         >
           <button
             type="button"
             onClick={() => setIsSupportOpen(true)}
-            className="text-sm font-bold text-[#776A6E] hover:text-[#241A1D] transition-colors bg-[#FAF7F4] px-6 py-3 rounded-full border border-[#E9E0E2]"
+            className={`flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl border px-4 text-sm font-bold transition-colors md:rounded-full md:px-6 ${isNightMode ? "border-white/10 bg-white/5 text-white/70 hover:bg-white/10" : "border-[#E9E0E2] bg-[#FAF7F4] text-[#776A6E] hover:text-[#241A1D]"}`}
           >
-            Dúvidas?
+            <MessageCircle size={17} /> <span className="hidden min-[355px]:inline">Dúvidas?</span>
           </button>
 
           {!isCompleted ? (
-            <div className="flex min-w-0 items-center justify-end gap-4">
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-4">
               {minimumWatchSeconds > 0 && (
                 <div className="hidden w-52 sm:block">
                   <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-[#776A6E]">
@@ -931,7 +1111,7 @@ export default function TelaDeAula() {
                   </div>
                 </div>
               )}
-              <div className="text-right">
+              <div className="min-w-0 flex-1 text-right md:flex-none">
                 {progressError && (
                   <p className="mb-1 max-w-xs text-xs font-semibold text-rose-600">
                     {progressError}
@@ -940,7 +1120,7 @@ export default function TelaDeAula() {
                 <button
                   onClick={handleMarkAsCompleted}
                   disabled={isCompleting || !canComplete}
-                  className="bg-[#641C32] text-white px-8 py-3.5 rounded-full font-bold hover:bg-[#7D2943] transition-all flex items-center gap-2 shadow-lg shadow-[#641C32]/20 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:opacity-50"
+                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#641C32] px-4 py-3 text-center text-sm font-bold leading-tight text-white shadow-lg shadow-[#641C32]/20 transition-all hover:bg-[#7D2943] disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:rounded-full md:px-8 md:text-base"
                 >
                   {isCompleting
                     ? "A concluir..."
@@ -952,13 +1132,13 @@ export default function TelaDeAula() {
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-4 animate-in slide-in-from-right-4 fade-in duration-500">
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-4 animate-in slide-in-from-right-4 fade-in duration-500">
               <div className="hidden sm:flex items-center gap-2 bg-[#F5EFEC] text-[#7D2943] px-4 py-2 rounded-full font-bold border border-[#E9E0E2]">
                 <span>✓</span> Progresso salvo
               </div>
               <button
                 onClick={handleNextLesson}
-                className="bg-[#241A1D] text-white px-8 py-3.5 rounded-full font-bold hover:bg-black transition-all flex items-center gap-2 shadow-xl shadow-black/10 hover:-translate-y-0.5"
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#241A1D] px-4 py-3 text-sm font-bold text-white shadow-xl shadow-black/10 transition-all hover:bg-black md:w-auto md:rounded-full md:px-8 md:text-base"
               >
                 {isLastLessonOfModule && hasPendingModuleGame
                   ? "Iniciar Avaliação"
