@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { useAuth } from "@clerk/nextjs";
+import { UserRound } from "lucide-react";
 import { AccountButton } from "./AccountButton";
 import BrandLogo from "./BrandLogo";
 
@@ -201,7 +202,15 @@ export default function LilianArrudaLandingPage() {
                       <span className="hidden sm:inline">O Meu Espaço</span>
                     </motion.button>
                   </Link>
-                  <div className="ml-2 border-l border-[#E9E0E2] pl-4">
+                  <Link
+                    href="/perfil"
+                    className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full border border-[#E9E0E2] bg-white px-3 text-sm font-bold text-[#641C32] shadow-sm transition hover:border-[#D8C5CB] hover:bg-[#F5EFEC] sm:px-4"
+                    aria-label="Abrir meu perfil"
+                  >
+                    <UserRound size={17} />
+                    <span className="hidden min-[520px]:inline">Meu perfil</span>
+                  </Link>
+                  <div className="hidden border-l border-[#E9E0E2] pl-4 sm:block">
                     <AccountButton />
                   </div>
                 </>
