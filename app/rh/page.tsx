@@ -1,9 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import {
+  Activity,
+  BookOpen,
+  Building2,
+  ChevronRight,
+  Clock3,
+  FileBarChart,
+  GraduationCap,
+  RefreshCw,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import ProfileModal from "../ProfileModal";
 import BrandLogo from "../BrandLogo";
 import EmployeeManagerModal from "./EmployeeManagerModal";
@@ -20,11 +32,40 @@ import {
   type UserProfile,
   UsersApiError,
 } from "@/lib/users-api";
+import {
+  getCourseReportPreview,
+  listReportCourses,
+  type CourseReportPreview,
+} from "@/lib/reports-api";
+
+interface EmployeeLearningSummary {
+  courses: Array<{
+    id: string;
+    title: string;
+    progress: number;
+    completedLessons: number;
+    totalLessons: number;
+  }>;
+  completedLessons: number;
+  totalLessons: number;
+  remainingLessons: number;
+  overallProgress: number;
+  lastActivity: string | null;
+}
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return "US";
   return `${parts[0][0]}${parts.length > 1 ? parts.at(-1)?.[0] : ""}`.toUpperCase();
+}
+
+function formatLastActivity(value: string | null) {
+  if (!value) return "Ainda não iniciou";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
 }
 
 export default function DashboardRH() {
@@ -33,8 +74,10 @@ export default function DashboardRH() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [employees, setEmployees] = useState<UserProfile[]>([]);
   const [invitations, setInvitations] = useState<EmployeeInvitation[]>([]);
+  const [courseReports, setCourseReports] = useState<CourseReportPreview[]>([]);
   const [isUsersLoading, setIsUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState<string | null>(null);
+  const [learningError, setLearningError] = useState<string | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<UserProfile | null>(
     null,
   );
@@ -68,6 +111,7 @@ export default function DashboardRH() {
 
       setIsUsersLoading(true);
       setUsersError(null);
+      setLearningError(null);
 
       try {
         const token = await getToken({ skipCache: true });
@@ -81,15 +125,33 @@ export default function DashboardRH() {
           currentProfile.role === "ADMIN" ||
           currentProfile.role === "HR_MANAGER"
         ) {
-          const [companyUsers, companyInvitations] = await Promise.all([
+          const [companyUsers, companyInvitations, reportCourses] = await Promise.all([
             listUsers(token, signal),
             listEmployeeInvitations(token, signal),
+            listReportCourses(token, signal),
           ]);
           setEmployees(companyUsers);
           setInvitations(companyInvitations);
+          try {
+            const reports = await Promise.all(
+              reportCourses.map((course) =>
+                getCourseReportPreview(token, course.id, signal),
+              ),
+            );
+            setCourseReports(reports);
+          } catch (reportError) {
+            if (reportError instanceof DOMException && reportError.name === "AbortError") {
+              return;
+            }
+            setCourseReports([]);
+            setLearningError(
+              "Os colaboradores foram carregados, mas os dados de aprendizagem não puderam ser atualizados.",
+            );
+          }
         } else {
           setEmployees([]);
           setInvitations([]);
+          setCourseReports([]);
         }
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError")
@@ -223,6 +285,61 @@ export default function DashboardRH() {
   const activeEmployees = employees.filter(
     (employee) => employee.isActive,
   ).length;
+  const learningByEmployee = useMemo(() => {
+    const summaries = new Map<string, EmployeeLearningSummary>();
+
+    courseReports.forEach((report) => {
+      report.collaborators.forEach((collaborator) => {
+        const current = summaries.get(collaborator.id) ?? {
+          courses: [],
+          completedLessons: 0,
+          totalLessons: 0,
+          remainingLessons: 0,
+          overallProgress: 0,
+          lastActivity: null,
+        };
+        current.courses.push({
+          id: report.course.id,
+          title: report.course.title,
+          progress: collaborator.overallProgress,
+          completedLessons: collaborator.completedLessons,
+          totalLessons: collaborator.totalLessons,
+        });
+        current.completedLessons += collaborator.completedLessons;
+        current.totalLessons += collaborator.totalLessons;
+        current.remainingLessons += Math.max(
+          0,
+          collaborator.totalLessons - collaborator.completedLessons,
+        );
+        if (
+          collaborator.lastActivity &&
+          (!current.lastActivity ||
+            new Date(collaborator.lastActivity) > new Date(current.lastActivity))
+        ) {
+          current.lastActivity = collaborator.lastActivity;
+        }
+        current.overallProgress = current.totalLessons
+          ? Math.round((current.completedLessons / current.totalLessons) * 100)
+          : 0;
+        summaries.set(collaborator.id, current);
+      });
+    });
+
+    return summaries;
+  }, [courseReports]);
+  const companyName =
+    profile?.company.name ?? courseReports[0]?.company.name ?? "Empresa vinculada";
+  const companyCompletedLessons = Array.from(learningByEmployee.values()).reduce(
+    (total, summary) => total + summary.completedLessons,
+    0,
+  );
+  const companyTotalLessons = Array.from(learningByEmployee.values()).reduce(
+    (total, summary) => total + summary.totalLessons,
+    0,
+  );
+  const companyAverageProgress = companyTotalLessons
+    ? Math.round((companyCompletedLessons / companyTotalLessons) * 100)
+    : 0;
 
   const container = {
     hidden: { opacity: 0 },
@@ -307,7 +424,7 @@ export default function DashboardRH() {
             >
               <path d="m9 18 6-6-6-6" />
             </svg>
-            <span className="text-[#241A1D] bg-white px-3 py-1.5 rounded-lg border border-[#E9E0E2] shadow-sm">
+            <span className="hidden text-[#241A1D] bg-white px-3 py-1.5 rounded-lg border border-[#E9E0E2] shadow-sm sm:inline-flex">
               Inteligência Estratégica
             </span>
           </div>
@@ -322,8 +439,11 @@ export default function DashboardRH() {
               <span className="sm:hidden">Cursos</span>
             </Link>
             <button
+              type="button"
               onClick={() => setIsProfileOpen(true)}
-              className="w-10 h-10 rounded-full bg-[#641C32] text-white flex items-center justify-center text-sm font-semibold shadow-sm hover:bg-[#7D2943] hover:scale-105 transition-all"
+              aria-label={`Abrir perfil de ${displayName}`}
+              title={displayName}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#641C32] text-sm font-semibold text-white shadow-sm transition-all hover:scale-105 hover:bg-[#7D2943]"
             >
               {displayInitials}
             </button>
@@ -337,46 +457,96 @@ export default function DashboardRH() {
             animate="show"
             className="max-w-[1000px] mx-auto"
           >
-            <motion.section variants={item} className="mb-12">
-              <div className="mb-6">
-                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#8F3651]">
-                  Dados da empresa
-                </p>
-                <h1 className="mt-2 font-serif text-4xl text-[#241A1D] md:text-5xl">
-                  Gestão de pessoas
-                </h1>
-                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#776A6E] sm:text-base">
-                  Os indicadores abaixo são calculados exclusivamente a partir
-                  dos colaboradores e convites registrados no backend.
-                </p>
+            <motion.section variants={item} className="mb-10">
+              <div className="mb-6 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+                <div>
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#E9E0E2] bg-white px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#8F3651] shadow-sm">
+                    <Building2 size={14} /> {companyName}
+                  </div>
+                  <h1 className="font-serif text-4xl text-[#241A1D] md:text-5xl">
+                    Gestão de pessoas
+                  </h1>
+                  <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#776A6E] sm:text-base">
+                    Pessoas, cursos e evolução da empresa em uma visão operacional para o RH.
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-[#241A1D] px-4 py-3 text-white shadow-lg sm:min-w-48">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-white/55">
+                    Progresso geral
+                  </p>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <span className="font-serif text-3xl">{companyAverageProgress}%</span>
+                    <span className="pb-1 text-[11px] text-white/60">
+                      {companyCompletedLessons}/{companyTotalLessons} aulas
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15">
+                    <div
+                      className="h-full rounded-full bg-[#D8AEBB] transition-[width]"
+                      style={{ width: `${companyAverageProgress}%` }}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 {[
-                  ["Colaboradores cadastrados", employees.length],
-                  ["Colaboradores ativos", activeEmployees],
-                  ["Aguardando ativação", pendingInvitations.length],
-                ].map(([label, value]) => (
+                  {
+                    label: "Colaboradores",
+                    value: employees.length,
+                    detail: `${activeEmployees} ativos`,
+                    icon: Users,
+                  },
+                  {
+                    label: "Cursos registrados",
+                    value: courseReports.length,
+                    detail: "disponíveis à empresa",
+                    icon: BookOpen,
+                  },
+                  {
+                    label: "Aulas concluídas",
+                    value: companyCompletedLessons,
+                    detail: `${Math.max(0, companyTotalLessons - companyCompletedLessons)} restantes`,
+                    icon: GraduationCap,
+                  },
+                  {
+                    label: "Aguardando ativação",
+                    value: pendingInvitations.length,
+                    detail: "convites pendentes",
+                    icon: Clock3,
+                  },
+                ].map(({ label, value, detail, icon: Icon }) => (
                   <div
-                    key={String(label)}
-                    className="rounded-[24px] border border-[#E9E0E2] bg-white p-6 shadow-[0_8px_30px_rgba(36,26,29,0.03)]"
+                    key={label}
+                    className="rounded-[22px] border border-[#E9E0E2] bg-white p-4 shadow-[0_8px_30px_rgba(36,26,29,0.03)] sm:p-5"
                   >
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#776A6E]">
-                      {label}
-                    </p>
-                    <p className="mt-3 font-serif text-4xl text-[#641C32]">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-[#776A6E] sm:text-[10px]">
+                        {label}
+                      </p>
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#F5EFEC] text-[#641C32]">
+                        <Icon size={16} />
+                      </span>
+                    </div>
+                    <p className="mt-3 font-serif text-3xl text-[#641C32] sm:text-4xl">
                       {isUsersLoading ? "—" : value}
                     </p>
+                    <p className="mt-1 text-[10px] text-[#776A6E] sm:text-xs">{detail}</p>
                   </div>
                 ))}
               </div>
+              {learningError && (
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
+                  {learningError}
+                </p>
+              )}
             </motion.section>
 
             {/* ==========================================
                 NOVA SECÇÃO: LISTA DE COLABORADORES (TABELA)
                 ========================================== */}
             <motion.div variants={item} className="mt-8">
-              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+              <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-3">
                   <h2 className="text-[22px] font-semibold text-[#241A1D] tracking-tight">
                     Colaboradores
@@ -386,31 +556,32 @@ export default function DashboardRH() {
                     {employees.length}
                   </span>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3">
                   {canManageUsers && (
                     <button
                       type="button"
                       onClick={() => setIsReportGeneratorOpen(true)}
-                      className="inline-flex rounded-full border border-[#D8C5CB] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#641C32] transition hover:bg-[#F5EFEC]"
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#D8C5CB] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#641C32] transition hover:bg-[#F5EFEC] sm:rounded-full"
                     >
-                      Relatórios
+                      <FileBarChart size={16} /> Relatórios
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={() => void loadUsers()}
                     disabled={isUsersLoading}
-                    className="text-[13px] font-semibold text-[#641C32] hover:text-[#7D2943] transition-colors disabled:cursor-wait disabled:opacity-50"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E9E0E2] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#641C32] transition-colors hover:bg-[#F5EFEC] disabled:cursor-wait disabled:opacity-50 sm:rounded-full sm:border-0 sm:bg-transparent sm:px-2"
                   >
-                    {isUsersLoading ? "A atualizar..." : "Atualizar"}
+                    <RefreshCw size={15} className={isUsersLoading ? "animate-spin" : ""} />
+                    {isUsersLoading ? "Atualizando" : "Atualizar"}
                   </button>
                   {canManageUsers && (
                     <button
                       type="button"
                       onClick={() => setIsCreateEmployeeOpen(true)}
-                      className="rounded-full bg-[#641C32] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_5px_14px_rgba(100,28,50,0.18)] transition hover:bg-[#7D2943]"
+                      className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-[#641C32] px-4 py-2.5 text-[13px] font-semibold text-white shadow-[0_5px_14px_rgba(100,28,50,0.18)] transition hover:bg-[#7D2943] sm:col-auto sm:rounded-full"
                     >
-                      + Novo colaborador
+                      <UserPlus size={16} /> Novo colaborador
                     </button>
                   )}
                 </div>
@@ -506,132 +677,161 @@ export default function DashboardRH() {
                 </div>
               )}
 
-              <div className="bg-white border border-[#E9E0E2] rounded-[24px] overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.02)]">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-[#FAF7F4] border-b border-[#E9E0E2]">
-                        <th className="p-5 text-[11px] font-bold text-[#776A6E] uppercase tracking-widest">
-                          Colaborador
-                        </th>
-                        <th className="p-5 text-[11px] font-bold text-[#776A6E] uppercase tracking-widest">
-                          Cargo / Departamento
-                        </th>
-                        <th className="p-5 text-[11px] font-bold text-[#776A6E] uppercase tracking-widest">
-                          Status
-                        </th>
-                        <th className="p-5 text-[11px] font-bold text-[#776A6E] uppercase tracking-widest">
-                          Ações
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {isUsersLoading ? (
-                        <tr>
-                          <td
-                            colSpan={4}
-                            className="p-10 text-center text-[#776A6E] text-sm"
+              {isUsersLoading ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {[0, 1].map((itemIndex) => (
+                    <div
+                      key={itemIndex}
+                      className="h-72 animate-pulse rounded-[24px] border border-[#E9E0E2] bg-white"
+                    />
+                  ))}
+                </div>
+              ) : usersError ? (
+                <div className="rounded-[24px] border border-[#F2CDCD] bg-white p-10 text-center">
+                  <p className="mb-3 text-sm font-semibold text-[#A50E0E]">
+                    {usersError}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void loadUsers()}
+                    className="text-[13px] font-semibold text-[#641C32] hover:underline"
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              ) : !canManageUsers ? (
+                <div className="rounded-[24px] border border-[#E9E0E2] bg-white p-10 text-center text-sm text-[#776A6E]">
+                  O seu perfil não possui permissão para gerir colaboradores.
+                </div>
+              ) : employees.length > 0 ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {employees.map((emp) => {
+                    const learning = learningByEmployee.get(emp.id) ?? {
+                      courses: [],
+                      completedLessons: 0,
+                      totalLessons: 0,
+                      remainingLessons: 0,
+                      overallProgress: 0,
+                      lastActivity: null,
+                    };
+
+                    return (
+                      <article
+                        key={emp.id}
+                        className="group overflow-hidden rounded-[24px] border border-[#E9E0E2] bg-white shadow-[0_8px_30px_rgba(36,26,29,0.035)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_38px_rgba(36,26,29,0.08)]"
+                      >
+                        <div className="flex items-start justify-between gap-4 border-b border-[#F1E8EA] p-5">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#641C32] font-serif text-lg text-white shadow-md shadow-[#641C32]/15">
+                              {getInitials(emp.name)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-[#241A1D] sm:text-base">
+                                {emp.name}
+                              </p>
+                              <p className="mt-0.5 truncate text-xs text-[#776A6E]">
+                                {emp.email}
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${emp.isActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"}`}
                           >
-                            A carregar colaboradores...
-                          </td>
-                        </tr>
-                      ) : usersError ? (
-                        <tr>
-                          <td colSpan={4} className="p-10 text-center">
-                            <p className="text-[#A50E0E] text-sm font-semibold mb-3">
-                              {usersError}
+                            <span className={`h-1.5 w-1.5 rounded-full ${emp.isActive ? "bg-emerald-500" : "bg-rose-500"}`} />
+                            {emp.isActive ? "Ativo" : "Inativo"}
+                          </span>
+                        </div>
+
+                        <div className="p-5">
+                          <div className="grid grid-cols-2 gap-3 text-xs">
+                            <div className="rounded-xl bg-[#FAF7F4] p-3">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-[#8A7D81]">Empresa</p>
+                              <p className="mt-1 truncate font-semibold text-[#241A1D]">{emp.company.name}</p>
+                            </div>
+                            <div className="rounded-xl bg-[#FAF7F4] p-3">
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-[#8A7D81]">Cargo / Área</p>
+                              <p className="mt-1 truncate font-semibold text-[#241A1D]">
+                                {emp.position || emp.department || "Não informado"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="mt-5">
+                            <div className="flex items-end justify-between gap-3">
+                              <div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-[#776A6E]">Jornada de aprendizagem</p>
+                                <p className="mt-1 text-xs text-[#776A6E]">
+                                  {learning.courses.length
+                                    ? `${learning.courses.length} curso${learning.courses.length === 1 ? "" : "s"} atribuído${learning.courses.length === 1 ? "" : "s"}`
+                                    : "Nenhum curso atribuído"}
+                                </p>
+                              </div>
+                              <span className="font-serif text-3xl text-[#641C32]">{learning.overallProgress}%</span>
+                            </div>
+                            <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#E9E0E2]">
+                              <div
+                                className="h-full rounded-full bg-[#641C32] transition-[width]"
+                                style={{ width: `${learning.overallProgress}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {learning.courses.map((course) => (
+                              <span
+                                key={course.id}
+                                title={`${course.completedLessons}/${course.totalLessons} aulas concluídas`}
+                                className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[#E9E0E2] bg-white px-3 py-1.5 text-[10px] font-semibold text-[#641C32]"
+                              >
+                                <BookOpen size={12} />
+                                <span className="max-w-48 truncate">{course.title}</span>
+                                <strong>{course.progress}%</strong>
+                              </span>
+                            ))}
+                          </div>
+
+                          <div className="mt-5 grid grid-cols-3 divide-x divide-[#E9E0E2] rounded-2xl border border-[#E9E0E2] bg-[#FAF7F4] py-3 text-center">
+                            <div className="px-2">
+                              <p className="font-serif text-xl text-[#641C32]">{learning.courses.length}</p>
+                              <p className="text-[9px] font-bold uppercase tracking-wide text-[#776A6E]">Cursos</p>
+                            </div>
+                            <div className="px-2">
+                              <p className="font-serif text-xl text-[#641C32]">{learning.completedLessons}</p>
+                              <p className="text-[9px] font-bold uppercase tracking-wide text-[#776A6E]">Concluídas</p>
+                            </div>
+                            <div className="px-2">
+                              <p className="font-serif text-xl text-[#641C32]">{learning.remainingLessons}</p>
+                              <p className="text-[9px] font-bold uppercase tracking-wide text-[#776A6E]">Restantes</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#F1E8EA] pt-4">
+                            <p className="flex min-w-0 items-center gap-2 text-[11px] text-[#776A6E]">
+                              <Activity size={14} className="shrink-0 text-[#8F3651]" />
+                              <span className="truncate">Última atividade: {formatLastActivity(learning.lastActivity)}</span>
                             </p>
                             <button
                               type="button"
-                              onClick={() => void loadUsers()}
-                              className="text-[#641C32] text-[13px] font-semibold hover:underline"
+                              onClick={() => void handleViewEmployee(emp)}
+                              disabled={openingEmployeeId === emp.id}
+                              className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-[#641C32] transition hover:gap-2 disabled:cursor-wait disabled:opacity-50"
                             >
-                              Tentar novamente
+                              {openingEmployeeId === emp.id ? "Abrindo" : "Gerir perfil"}
+                              <ChevronRight size={15} />
                             </button>
-                          </td>
-                        </tr>
-                      ) : !canManageUsers ? (
-                        <tr>
-                          <td
-                            colSpan={4}
-                            className="p-10 text-center text-[#776A6E] text-sm"
-                          >
-                            O seu perfil não possui permissão para gerir
-                            colaboradores.
-                          </td>
-                        </tr>
-                      ) : employees.length > 0 ? (
-                        employees.map((emp) => (
-                          <tr
-                            key={emp.id}
-                            className="border-b border-[#E9E0E2] last:border-none hover:bg-[#FAF7F4]/50 transition-colors"
-                          >
-                            <td className="p-5">
-                              <div className="flex items-center gap-4">
-                                {/* Avatar Criativo com as iniciais */}
-                                <div className="w-10 h-10 rounded-full bg-[#F5EFEC] border border-[#E9E0E2] text-[#641C32] flex items-center justify-center font-bold text-sm shadow-sm">
-                                  {emp.name.charAt(0).toUpperCase()}
-                                </div>
-                                <div>
-                                  <p className="font-semibold text-[#241A1D] text-sm">
-                                    {emp.name}
-                                  </p>
-                                  <p className="text-[#776A6E] text-[13px] mt-0.5">
-                                    {emp.email}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="p-5">
-                              <p className="font-medium text-[#241A1D] text-sm">
-                                {emp.position || "Não definido"}
-                              </p>
-                              <p className="text-[#776A6E] text-[13px] mt-0.5">
-                                {emp.department || "-"}
-                              </p>
-                            </td>
-                            <td className="p-5">
-                              {emp.isActive ? (
-                                <span className="inline-flex items-center gap-1.5 bg-[#F8EDEF]/50 border border-[#F1DFE4] text-[#641C32] px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[#641C32]"></span>{" "}
-                                  Ativo
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 bg-[#FCE8E6]/50 border border-[#FAD2CF] text-[#A50E0E] px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-[#A50E0E]"></span>{" "}
-                                  Inativo
-                                </span>
-                              )}
-                            </td>
-                            <td className="p-5">
-                              <button
-                                type="button"
-                                onClick={() => void handleViewEmployee(emp)}
-                                disabled={openingEmployeeId === emp.id}
-                                className="text-[#641C32] text-[13px] font-semibold hover:underline"
-                              >
-                                {openingEmployeeId === emp.id
-                                  ? "A abrir..."
-                                  : "Gerir perfil"}
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td
-                            colSpan={4}
-                            className="p-10 text-center text-[#776A6E] text-sm"
-                          >
-                            Ainda não existem colaboradores registados nesta
-                            empresa.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
-              </div>
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-[#D9C9CD] bg-white p-10 text-center">
+                  <Users size={28} className="mx-auto mb-3 text-[#8F3651]" />
+                  <p className="font-semibold text-[#241A1D]">Ainda não existem colaboradores registados nesta empresa.</p>
+                  <p className="mt-2 text-sm text-[#776A6E]">Crie um convite para começar a acompanhar a jornada da equipe.</p>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         </main>

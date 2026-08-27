@@ -5,6 +5,10 @@ export type UserRole = "USER" | "ADMIN" | "HR_MANAGER";
 export interface UserProfile {
   id: string;
   companyId: string;
+  company: {
+    id: string;
+    name: string;
+  };
   name: string;
   email: string;
   role: UserRole;

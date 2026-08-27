@@ -26,6 +26,7 @@ import {
   RotateCcw,
   RotateCw,
   NotebookPen,
+  Menu,
 } from "lucide-react";
 import { API_BASE_URL, apiAssetUrl, apiUrl } from "@/lib/api-config";
 
@@ -133,6 +134,7 @@ export default function TelaDeAula() {
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [activeModule, setActiveModule] = useState<Module | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [watchedSeconds, setWatchedSeconds] = useState(0);
@@ -159,13 +161,6 @@ export default function TelaDeAula() {
   const isSavingProgress = useRef(false);
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      setIsNightMode(localStorage.getItem("lesson-night-mode") === "true");
-    });
-    return () => cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
     if (!activeLesson) return;
     const frame = requestAnimationFrame(() => {
       setLessonNotes(
@@ -178,11 +173,7 @@ export default function TelaDeAula() {
   }, [activeLesson]);
 
   const toggleNightMode = () => {
-    setIsNightMode((current) => {
-      const next = !current;
-      localStorage.setItem("lesson-night-mode", String(next));
-      return next;
-    });
+    setIsNightMode((current) => !current);
   };
 
   const updateLessonNotes = (value: string) => {
@@ -559,6 +550,7 @@ export default function TelaDeAula() {
       less.type !== "VIDEO" || (less.minimumWatchSeconds ?? 0) === 0,
     );
     setProgressError("");
+    setIsMobileSidebarOpen(false);
     lastSavedTime.current = 0;
   };
 
@@ -674,11 +666,149 @@ export default function TelaDeAula() {
         )}
       </AnimatePresence>
 
+      {/* NAVEGAÇÃO MÓVEL DE MÓDULOS E AULAS */}
+      <AnimatePresence>
+        {isMobileSidebarOpen && (
+          <div className="fixed inset-0 z-[160] md:hidden">
+            <motion.button
+              type="button"
+              aria-label="Fechar menu de aulas"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsMobileSidebarOpen(false)}
+              className="absolute inset-0 bg-[#241A1D]/55 backdrop-blur-sm"
+            />
+            <motion.aside
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", stiffness: 330, damping: 34 }}
+              className="relative flex h-full w-[86vw] max-w-[320px] flex-col border-r border-[#E9E0E2] bg-white shadow-2xl"
+            >
+              <div className="border-b border-[#F1E8EA] p-5">
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <Link
+                    href="/trilhas"
+                    className="flex items-center gap-2 text-xs font-bold text-[#776A6E] transition hover:text-[#641C32]"
+                  >
+                    <ArrowLeft size={15} /> Voltar às trilhas
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileSidebarOpen(false)}
+                    aria-label="Fechar módulos e aulas"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F5EFEC] text-[#641C32]"
+                  >
+                    <X size={17} />
+                  </button>
+                </div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8F3651]">
+                  Conteúdo do curso
+                </p>
+                <h2 className="mt-2 font-serif text-xl leading-tight text-[#241A1D]">
+                  {course.title}
+                </h2>
+                <div className="mt-4 flex items-center gap-3">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#E9E0E2]">
+                    <div
+                      className="h-full rounded-full bg-[#641C32]"
+                      style={{ width: `${courseProgressPercent}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold text-[#641C32]">
+                    {courseProgressPercent}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex-1 space-y-6 overflow-y-auto p-4 pb-8">
+                {course.modules.map((modulo, moduleIndex) => (
+                  <section key={modulo.id}>
+                    <h3 className="mb-2 px-2 text-[10px] font-bold uppercase tracking-wider text-[#776A6E]">
+                      Módulo {moduleIndex + 1}: {modulo.title}
+                    </h3>
+                    <div className="space-y-1.5">
+                      {modulo.lessons.map((lesson, lessonIndex) => {
+                        const isCurrent = activeLesson?.id === lesson.id;
+                        const isUnlocked = isLessonUnlocked(lesson.id);
+                        const isDone = completedLessonIds.includes(lesson.id);
+
+                        return (
+                          <button
+                            key={lesson.id}
+                            type="button"
+                            onClick={() =>
+                              isUnlocked && handleLessonChange(modulo, lesson)
+                            }
+                            disabled={!isUnlocked}
+                            className={`flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition ${
+                              isCurrent
+                                ? "border-[#E2D1D6] bg-[#F5EFEC] shadow-sm"
+                                : isUnlocked
+                                  ? "border-transparent hover:bg-[#FAF7F4]"
+                                  : "cursor-not-allowed border-transparent opacity-45"
+                            }`}
+                          >
+                            <span
+                              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-bold ${
+                                isDone
+                                  ? "border-[#641C32] bg-[#641C32] text-white"
+                                  : isCurrent
+                                    ? "border-[#641C32] bg-white text-[#641C32]"
+                                    : "border-[#E9E0E2] text-[#9B8D91]"
+                              }`}
+                            >
+                              {isDone ? (
+                                <CheckCircle2 size={12} strokeWidth={3} />
+                              ) : !isUnlocked ? (
+                                <Lock size={10} />
+                              ) : (
+                                lessonIndex + 1
+                              )}
+                            </span>
+                            <span className="min-w-0">
+                              <strong className={`block truncate text-sm ${isCurrent ? "text-[#241A1D]" : "text-[#776A6E]"}`}>
+                                {lesson.title}
+                              </strong>
+                              <span className="mt-0.5 flex items-center gap-1 text-[11px] text-[#9B8D91]">
+                                {lesson.type === "VIDEO" ? <PlayCircle size={11} /> : <FileText size={11} />}
+                                {lesson.duration} min
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                      {modulo.gameType &&
+                        modulo.lessons.every((lesson) =>
+                          completedLessonIds.includes(lesson.id),
+                        ) && (
+                          <Link
+                            href={`/avaliacao?moduleId=${modulo.id}`}
+                            onClick={() => setIsMobileSidebarOpen(false)}
+                            className="mt-2 flex items-center justify-center rounded-2xl bg-[#641C32] px-4 py-3 text-xs font-bold text-white"
+                          >
+                            {modulo.gameResults.some(
+                              (result) => result.gameType === modulo.gameType,
+                            )
+                              ? "✓ Avaliação concluída"
+                              : "Iniciar avaliação do módulo"}
+                          </Link>
+                        )}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            </motion.aside>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* 1. SIDEBAR (MÓDULOS E AULAS COM CADEADOS) */}
       <aside
-        className={`hidden lg:flex flex-col bg-white border-r border-[#E9E0E2] z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-500 ease-in-out ${isSidebarOpen ? "w-80 opacity-100 translate-x-0" : "w-0 opacity-0 -translate-x-full overflow-hidden"}`}
+        className={`hidden md:flex flex-col bg-white border-r border-[#E9E0E2] z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-500 ease-in-out ${isSidebarOpen ? "w-72 opacity-100 translate-x-0" : "w-0 opacity-0 -translate-x-full overflow-hidden"}`}
       >
-        <div className="w-80 h-full flex flex-col">
+        <div className="w-72 h-full flex flex-col">
           <div className="p-6 border-b border-[#F5EFEC]">
             <Link
               href="/trilhas"
@@ -802,7 +932,7 @@ export default function TelaDeAula() {
           <div className="flex min-w-0 items-center gap-3 md:gap-4">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="hidden lg:flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#E9E0E2] transition-colors text-[#776A6E]"
+              className="hidden md:flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#E9E0E2] transition-colors text-[#776A6E]"
             >
               <ChevronRight
                 size={20}
@@ -813,20 +943,21 @@ export default function TelaDeAula() {
                 }
               />
             </button>
-            <Link
-              href="/trilhas"
-              aria-label="Voltar às trilhas"
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition lg:hidden ${isNightMode ? "bg-white/10 text-white" : "bg-white text-[#641C32] shadow-sm"}`}
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              aria-label="Abrir módulos e aulas"
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition md:hidden ${isNightMode ? "bg-white/10 text-white" : "bg-white text-[#641C32] shadow-sm"}`}
             >
-              <ArrowLeft size={17} />
-            </Link>
+              <Menu size={18} />
+            </button>
             <div className="min-w-0">
               <span
                 className={`inline-flex max-w-[50vw] truncate rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-widest shadow-sm md:text-xs ${isNightMode ? "border-white/10 bg-white/10 text-white/75" : "border-[#E9E0E2] bg-white text-[#776A6E]"}`}
               >
                 {activeModule?.title || "Aula"}
               </span>
-              <p className={`mt-1 hidden max-w-[55vw] truncate text-xs font-semibold sm:block lg:hidden ${isNightMode ? "text-white/60" : "text-[#776A6E]"}`}>
+              <p className={`mt-1 hidden max-w-[55vw] truncate text-xs font-semibold sm:block md:hidden ${isNightMode ? "text-white/60" : "text-[#776A6E]"}`}>
                 {course.title}
               </p>
             </div>
@@ -837,9 +968,10 @@ export default function TelaDeAula() {
               onClick={toggleNightMode}
               aria-label={isNightMode ? "Desativar modo noturno" : "Ativar modo noturno"}
               title={isNightMode ? "Desativar modo noturno" : "Ativar modo noturno"}
+              aria-pressed={isNightMode}
               className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${isNightMode ? "border-white/10 bg-white/10 text-amber-200 hover:bg-white/15" : "border-[#E9E0E2] bg-white text-[#641C32] hover:bg-[#F5EFEC]"}`}
             >
-              {isNightMode ? <Sun size={17} /> : <Moon size={17} />}
+              {isNightMode ? <Moon size={17} /> : <Sun size={17} />}
             </button>
             <UserButton />
           </div>
@@ -1081,7 +1213,7 @@ export default function TelaDeAula() {
 
         {/* 3. BARRA INFERIOR */}
         <div
-          className={`fixed bottom-0 right-0 z-40 flex items-stretch justify-between gap-3 border-t p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-10px_40px_rgba(0,0,0,0.06)] transition-all duration-500 md:items-center md:p-6 md:px-12 ${isNightMode ? "border-white/10 bg-[#2B2430]" : "border-[#E9E0E2] bg-white"} ${isSidebarOpen ? "left-0 lg:left-80" : "left-0"}`}
+          className={`fixed bottom-0 right-0 z-40 flex items-stretch justify-between gap-3 border-t p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-10px_40px_rgba(0,0,0,0.06)] transition-all duration-500 md:items-center md:p-6 md:px-12 ${isNightMode ? "border-white/10 bg-[#2B2430]" : "border-[#E9E0E2] bg-white"} ${isSidebarOpen ? "left-0 md:left-72" : "left-0"}`}
         >
           <button
             type="button"

@@ -32,6 +32,8 @@ export function AccountButton({ showName = false }: AccountButtonProps) {
 const routesWithInlineAccountAccess = [
   "/",
   "/dashboard",
+  "/aula",
+  "/rh",
   "/perfil",
   "/sign-in",
   "/sign-up",

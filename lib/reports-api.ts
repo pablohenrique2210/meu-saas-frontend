@@ -61,12 +61,29 @@ export interface CourseReportPreview {
   collaborators: Array<{
     id: string;
     name: string;
+    email: string;
     position: string | null;
     department: string | null;
     isActive: boolean;
+    completedLessons: number;
+    totalLessons: number;
     overallProgress: number;
     status: ProgressStatus;
     lastActivity: string | null;
+    modules: Array<{
+      moduleId: string;
+      title: string;
+      completedLessons: number;
+      totalLessons: number;
+      progress: number;
+      status: ProgressStatus;
+      evaluation: {
+        gameType: "DILEMA" | "INSPECAO" | "CORRIDA";
+        finalScore: number;
+        timeSpentSeconds: number;
+        completedAt: string;
+      } | null;
+    }>;
   }>;
   insights: string[];
 }
