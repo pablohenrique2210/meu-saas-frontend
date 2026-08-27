@@ -144,7 +144,9 @@ export default function TelaDeAula() {
   const [isCompleting, setIsCompleting] = useState(false);
   const [progressError, setProgressError] = useState("");
   const [videoError, setVideoError] = useState("");
-  const [downloadingMaterial, setDownloadingMaterial] = useState<string | null>(null);
+  const [downloadingMaterial, setDownloadingMaterial] = useState<string | null>(
+    null,
+  );
   const [isNightMode, setIsNightMode] = useState(false);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [lessonNotes, setLessonNotes] = useState("");
@@ -172,8 +174,20 @@ export default function TelaDeAula() {
     return () => cancelAnimationFrame(frame);
   }, [activeLesson]);
 
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("lesson-color-theme");
+    const frame = requestAnimationFrame(() => {
+      setIsNightMode(savedTheme === "dark");
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
   const toggleNightMode = () => {
-    setIsNightMode((current) => !current);
+    setIsNightMode((current) => {
+      const nextMode = !current;
+      localStorage.setItem("lesson-color-theme", nextMode ? "dark" : "light");
+      return nextMode;
+    });
   };
 
   const updateLessonNotes = (value: string) => {
@@ -186,8 +200,13 @@ export default function TelaDeAula() {
   const seekVideo = (seconds: number) => {
     const video = videoRef.current;
     if (!video) return;
-    const duration = Number.isFinite(video.duration) ? video.duration : Infinity;
-    video.currentTime = Math.max(0, Math.min(duration, video.currentTime + seconds));
+    const duration = Number.isFinite(video.duration)
+      ? video.duration
+      : Infinity;
+    video.currentTime = Math.max(
+      0,
+      Math.min(duration, video.currentTime + seconds),
+    );
   };
 
   const changePlaybackRate = (rate: number) => {
@@ -212,14 +231,23 @@ export default function TelaDeAula() {
         { headers: { Authorization: `Bearer ${token}` } },
       );
       if (!response.ok) {
-        throw new Error(await responseMessage(response, "Não foi possível baixar o material."));
+        throw new Error(
+          await responseMessage(
+            response,
+            "Não foi possível baixar o material.",
+          ),
+        );
       }
       const blobUrl = URL.createObjectURL(await response.blob());
       const disposition = response.headers.get("Content-Disposition") ?? "";
-      const responseName = disposition.match(/filename\*?=(?:UTF-8''|\")?([^";]+)/i)?.[1];
+      const responseName = disposition.match(
+        /filename\*?=(?:UTF-8''|\")?([^";]+)/i,
+      )?.[1];
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = responseName ? decodeURIComponent(responseName.replace(/"/g, "")) : title;
+      link.download = responseName
+        ? decodeURIComponent(responseName.replace(/"/g, ""))
+        : title;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -256,8 +284,7 @@ export default function TelaDeAula() {
 
         // Guarda as aulas concluídas
         if (progRes.ok) {
-          const progData =
-            (await progRes.json()) as LessonProgressSummary[];
+          const progData = (await progRes.json()) as LessonProgressSummary[];
           const completedIds = progData
             .filter((progress) => progress.isCompleted)
             .map((progress) => progress.lessonId);
@@ -353,21 +380,18 @@ export default function TelaDeAula() {
     try {
       const token = await getToken({ skipCache: true });
       if (!token) throw new Error("Sessão sem token");
-      const response = await fetch(
-        apiUrl("/api/courses/progress"),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            lessonId: activeLesson.id,
-            lastTime: time,
-            ...(requestCompletion ? { isCompleted: true } : {}),
-          }),
+      const response = await fetch(apiUrl("/api/courses/progress"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-      );
+        body: JSON.stringify({
+          lessonId: activeLesson.id,
+          lastTime: time,
+          ...(requestCompletion ? { isCompleted: true } : {}),
+        }),
+      });
       const payload = (await response.json().catch(() => null)) as
         | (Partial<LessonProgressResponse> & {
             message?: string | string[];
@@ -508,8 +532,8 @@ export default function TelaDeAula() {
   const isNativeVideo = (url: string) =>
     Boolean(
       url &&
-        (/\/uploads\//i.test(url) ||
-          /\.(mp4|webm|ogg|mov|m4v)(?:[?#]|$)/i.test(url)),
+      (/\/uploads\//i.test(url) ||
+        /\.(mp4|webm|ogg|mov|m4v)(?:[?#]|$)/i.test(url)),
     );
   const getEmbedUrl = (url: string) => {
     try {
@@ -560,15 +584,15 @@ export default function TelaDeAula() {
       : 100;
   const isLastLessonOfModule = Boolean(
     activeModule &&
-      activeLesson &&
-      activeModule.lessons[activeModule.lessons.length - 1]?.id ===
-        activeLesson.id,
+    activeLesson &&
+    activeModule.lessons[activeModule.lessons.length - 1]?.id ===
+      activeLesson.id,
   );
   const hasPendingModuleGame = Boolean(
     activeModule?.gameType &&
-      !activeModule.gameResults.some(
-        (result) => result.gameType === activeModule.gameType,
-      ),
+    !activeModule.gameResults.some(
+      (result) => result.gameType === activeModule.gameType,
+    ),
   );
   const completedCourseLessons = allLessons.filter((lesson) =>
     completedLessonIds.includes(lesson.id),
@@ -613,17 +637,19 @@ export default function TelaDeAula() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-[#E9E0E2]"
+              className={`relative w-full max-w-md rounded-3xl border p-8 shadow-2xl transition-colors ${isNightMode ? "border-white/10 bg-[#2B2430]" : "border-[#E9E0E2] bg-white"}`}
             >
               <button
                 onClick={() => setIsSupportOpen(false)}
-                className="absolute top-4 right-4 p-2 text-[#776A6E] hover:text-[#241A1D] hover:bg-[#F5EFEC] rounded-full transition-colors"
+                className={`absolute right-4 top-4 rounded-full p-2 transition-colors ${isNightMode ? "text-white/55 hover:bg-white/10 hover:text-white" : "text-[#776A6E] hover:bg-[#F5EFEC] hover:text-[#241A1D]"}`}
               >
                 <X size={20} />
               </button>
 
               <div className="flex items-center gap-4 mb-6">
-                <div className="w-14 h-14 rounded-full bg-[#F5EFEC] border border-[#E9E0E2] text-[#641C32] flex items-center justify-center font-bold text-lg shrink-0">
+                <div
+                  className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full border text-lg font-bold ${isNightMode ? "border-white/10 bg-white/10 text-rose-200" : "border-[#E9E0E2] bg-[#F5EFEC] text-[#641C32]"}`}
+                >
                   {CONSULTANT_NAME.split(" ")
                     .slice(0, 2)
                     .map((n) => n[0])
@@ -631,16 +657,22 @@ export default function TelaDeAula() {
                     .toUpperCase()}
                 </div>
                 <div>
-                  <h3 className="font-serif text-xl text-[#241A1D] leading-tight">
+                  <h3
+                    className={`font-serif text-xl leading-tight ${isNightMode ? "text-white" : "text-[#241A1D]"}`}
+                  >
                     {CONSULTANT_NAME}
                   </h3>
-                  <p className="text-xs text-[#776A6E] mt-0.5">
+                  <p
+                    className={`mt-0.5 text-xs ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}
+                  >
                     {CONSULTANT_ROLE}
                   </p>
                 </div>
               </div>
 
-              <p className="text-sm text-[#776A6E] mb-6">
+              <p
+                className={`mb-6 text-sm ${isNightMode ? "text-white/65" : "text-[#776A6E]"}`}
+              >
                 Ficou com alguma dúvida sobre o curso ou o conteúdo? Fala
                 diretamente com a consultora por um dos canais:
               </p>
@@ -656,7 +688,7 @@ export default function TelaDeAula() {
                 </a>
                 <a
                   href={CONSULTANT_EMAIL_URL}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-[#E9E0E2] bg-[#FAF7F4] px-5 py-3.5 text-sm font-bold text-[#241A1D] transition hover:bg-[#F5EFEC]"
+                  className={`flex items-center justify-center gap-2 rounded-2xl border px-5 py-3.5 text-sm font-bold transition ${isNightMode ? "border-white/10 bg-white/5 text-white hover:bg-white/10" : "border-[#E9E0E2] bg-[#FAF7F4] text-[#241A1D] hover:bg-[#F5EFEC]"}`}
                 >
                   <Mail size={18} /> Enviar e-mail
                 </a>
@@ -684,13 +716,15 @@ export default function TelaDeAula() {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 330, damping: 34 }}
-              className="relative flex h-full w-[86vw] max-w-[320px] flex-col border-r border-[#E9E0E2] bg-white shadow-2xl"
+              className={`relative flex h-full w-[86vw] max-w-[320px] flex-col border-r shadow-2xl transition-colors ${isNightMode ? "border-white/10 bg-[#19151E] text-white" : "border-[#E9E0E2] bg-white text-[#241A1D]"}`}
             >
-              <div className="border-b border-[#F1E8EA] p-5">
+              <div
+                className={`border-b p-5 ${isNightMode ? "border-white/10" : "border-[#F1E8EA]"}`}
+              >
                 <div className="mb-5 flex items-center justify-between gap-3">
                   <Link
                     href="/trilhas"
-                    className="flex items-center gap-2 text-xs font-bold text-[#776A6E] transition hover:text-[#641C32]"
+                    className={`flex items-center gap-2 text-xs font-bold transition ${isNightMode ? "text-white/60 hover:text-white" : "text-[#776A6E] hover:text-[#641C32]"}`}
                   >
                     <ArrowLeft size={15} /> Voltar às trilhas
                   </Link>
@@ -698,25 +732,33 @@ export default function TelaDeAula() {
                     type="button"
                     onClick={() => setIsMobileSidebarOpen(false)}
                     aria-label="Fechar módulos e aulas"
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F5EFEC] text-[#641C32]"
+                    className={`flex h-9 w-9 items-center justify-center rounded-full ${isNightMode ? "bg-white/10 text-white" : "bg-[#F5EFEC] text-[#641C32]"}`}
                   >
                     <X size={17} />
                   </button>
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8F3651]">
+                <p
+                  className={`text-[10px] font-bold uppercase tracking-[0.16em] ${isNightMode ? "text-rose-200" : "text-[#8F3651]"}`}
+                >
                   Conteúdo do curso
                 </p>
-                <h2 className="mt-2 font-serif text-xl leading-tight text-[#241A1D]">
+                <h2
+                  className={`mt-2 font-serif text-xl leading-tight ${isNightMode ? "text-white" : "text-[#241A1D]"}`}
+                >
                   {course.title}
                 </h2>
                 <div className="mt-4 flex items-center gap-3">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#E9E0E2]">
+                  <div
+                    className={`h-1.5 flex-1 overflow-hidden rounded-full ${isNightMode ? "bg-white/10" : "bg-[#E9E0E2]"}`}
+                  >
                     <div
                       className="h-full rounded-full bg-[#641C32]"
                       style={{ width: `${courseProgressPercent}%` }}
                     />
                   </div>
-                  <span className="text-[10px] font-bold text-[#641C32]">
+                  <span
+                    className={`text-[10px] font-bold ${isNightMode ? "text-rose-200" : "text-[#641C32]"}`}
+                  >
                     {courseProgressPercent}%
                   </span>
                 </div>
@@ -725,7 +767,9 @@ export default function TelaDeAula() {
               <div className="flex-1 space-y-6 overflow-y-auto p-4 pb-8">
                 {course.modules.map((modulo, moduleIndex) => (
                   <section key={modulo.id}>
-                    <h3 className="mb-2 px-2 text-[10px] font-bold uppercase tracking-wider text-[#776A6E]">
+                    <h3
+                      className={`mb-2 px-2 text-[10px] font-bold uppercase tracking-wider ${isNightMode ? "text-white/45" : "text-[#776A6E]"}`}
+                    >
                       Módulo {moduleIndex + 1}: {modulo.title}
                     </h3>
                     <div className="space-y-1.5">
@@ -744,19 +788,27 @@ export default function TelaDeAula() {
                             disabled={!isUnlocked}
                             className={`flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition ${
                               isCurrent
-                                ? "border-[#E2D1D6] bg-[#F5EFEC] shadow-sm"
+                                ? isNightMode
+                                  ? "border-white/15 bg-white/10 shadow-sm"
+                                  : "border-[#E2D1D6] bg-[#F5EFEC] shadow-sm"
                                 : isUnlocked
-                                  ? "border-transparent hover:bg-[#FAF7F4]"
+                                  ? isNightMode
+                                    ? "border-transparent hover:bg-white/5"
+                                    : "border-transparent hover:bg-[#FAF7F4]"
                                   : "cursor-not-allowed border-transparent opacity-45"
                             }`}
                           >
                             <span
                               className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-bold ${
                                 isDone
-                                  ? "border-[#641C32] bg-[#641C32] text-white"
+                                  ? "border-[#8F3651] bg-[#8F3651] text-white"
                                   : isCurrent
-                                    ? "border-[#641C32] bg-white text-[#641C32]"
-                                    : "border-[#E9E0E2] text-[#9B8D91]"
+                                    ? isNightMode
+                                      ? "border-rose-200 bg-[#2B2430] text-rose-200"
+                                      : "border-[#641C32] bg-white text-[#641C32]"
+                                    : isNightMode
+                                      ? "border-white/20 text-white/45"
+                                      : "border-[#E9E0E2] text-[#9B8D91]"
                               }`}
                             >
                               {isDone ? (
@@ -768,11 +820,19 @@ export default function TelaDeAula() {
                               )}
                             </span>
                             <span className="min-w-0">
-                              <strong className={`block truncate text-sm ${isCurrent ? "text-[#241A1D]" : "text-[#776A6E]"}`}>
+                              <strong
+                                className={`block truncate text-sm ${isCurrent ? (isNightMode ? "text-white" : "text-[#241A1D]") : isNightMode ? "text-white/65" : "text-[#776A6E]"}`}
+                              >
                                 {lesson.title}
                               </strong>
-                              <span className="mt-0.5 flex items-center gap-1 text-[11px] text-[#9B8D91]">
-                                {lesson.type === "VIDEO" ? <PlayCircle size={11} /> : <FileText size={11} />}
+                              <span
+                                className={`mt-0.5 flex items-center gap-1 text-[11px] ${isNightMode ? "text-white/40" : "text-[#9B8D91]"}`}
+                              >
+                                {lesson.type === "VIDEO" ? (
+                                  <PlayCircle size={11} />
+                                ) : (
+                                  <FileText size={11} />
+                                )}
                                 {lesson.duration} min
                               </span>
                             </span>
@@ -806,18 +866,20 @@ export default function TelaDeAula() {
 
       {/* 1. SIDEBAR (MÓDULOS E AULAS COM CADEADOS) */}
       <aside
-        className={`hidden md:flex flex-col bg-white border-r border-[#E9E0E2] z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-all duration-500 ease-in-out ${isSidebarOpen ? "w-72 opacity-100 translate-x-0" : "w-0 opacity-0 -translate-x-full overflow-hidden"}`}
+        className={`z-20 hidden flex-col border-r shadow-[4px_0_24px_rgba(0,0,0,0.08)] transition-all duration-500 ease-in-out md:flex ${isNightMode ? "border-white/10 bg-[#19151E] text-white" : "border-[#E9E0E2] bg-white text-[#241A1D]"} ${isSidebarOpen ? "w-72 translate-x-0 opacity-100" : "w-0 -translate-x-full overflow-hidden opacity-0"}`}
       >
         <div className="w-72 h-full flex flex-col">
-          <div className="p-6 border-b border-[#F5EFEC]">
+          <div
+            className={`border-b p-6 ${isNightMode ? "border-white/10" : "border-[#F5EFEC]"}`}
+          >
             <Link
               href="/trilhas"
-              className="text-sm font-bold text-[#776A6E] hover:text-[#641C32] transition-colors flex items-center gap-2 mb-6 w-fit"
+              className={`mb-6 flex w-fit items-center gap-2 text-sm font-bold transition-colors ${isNightMode ? "text-white/55 hover:text-white" : "text-[#776A6E] hover:text-[#641C32]"}`}
             >
               <ArrowLeft size={16} /> Voltar às Trilhas
             </Link>
             <h2
-              className="font-serif text-xl text-[#241A1D] leading-tight line-clamp-2"
+              className={`line-clamp-2 font-serif text-xl leading-tight ${isNightMode ? "text-white" : "text-[#241A1D]"}`}
               title={course.title}
             >
               {course.title}
@@ -827,7 +889,9 @@ export default function TelaDeAula() {
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
             {course.modules.map((modulo, mIndex) => (
               <div key={modulo.id} className="space-y-2">
-                <h3 className="text-xs font-bold text-[#776A6E] uppercase tracking-wider px-2">
+                <h3
+                  className={`px-2 text-xs font-bold uppercase tracking-wider ${isNightMode ? "text-white/45" : "text-[#776A6E]"}`}
+                >
                   Módulo {mIndex + 1}: {modulo.title}
                 </h3>
                 <div className="space-y-1">
@@ -846,22 +910,32 @@ export default function TelaDeAula() {
                         className={`w-full text-left p-3 rounded-2xl flex items-start gap-3 transition-all duration-300
                           ${
                             isCurrent
-                              ? "bg-[#F5EFEC] border border-[#E9E0E2] shadow-sm"
+                              ? isNightMode
+                                ? "border border-white/15 bg-white/10 shadow-sm"
+                                : "border border-[#E9E0E2] bg-[#F5EFEC] shadow-sm"
                               : isUnlocked
-                                ? "hover:bg-[#FAF7F4] border border-transparent cursor-pointer"
-                                : "opacity-50 cursor-not-allowed border border-transparent grayscale"
+                                ? isNightMode
+                                  ? "cursor-pointer border border-transparent hover:bg-white/5"
+                                  : "cursor-pointer border border-transparent hover:bg-[#FAF7F4]"
+                                : "cursor-not-allowed border border-transparent opacity-50 grayscale"
                           }`}
                       >
                         <div
                           className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 border-2
                           ${
                             isCurrent
-                              ? "border-[#641C32] bg-white text-[#641C32]"
+                              ? isNightMode
+                                ? "border-rose-200 bg-[#2B2430] text-rose-200"
+                                : "border-[#641C32] bg-white text-[#641C32]"
                               : isDone
                                 ? "border-[#641C32] bg-[#641C32] text-white" // Checkmark de concluído!
                                 : isUnlocked
-                                  ? "border-[#E9E0E2] bg-transparent text-[#E9E0E2]"
-                                  : "border-slate-200 bg-slate-100 text-slate-400"
+                                  ? isNightMode
+                                    ? "border-white/20 bg-transparent text-white/45"
+                                    : "border-[#E9E0E2] bg-transparent text-[#E9E0E2]"
+                                  : isNightMode
+                                    ? "border-white/10 bg-white/5 text-white/30"
+                                    : "border-slate-200 bg-slate-100 text-slate-400"
                           }`} // Cinza se trancado
                         >
                           {isCurrent ? (
@@ -878,12 +952,12 @@ export default function TelaDeAula() {
                         </div>
                         <div>
                           <h4
-                            className={`text-sm leading-snug ${isCurrent ? "text-[#241A1D] font-bold" : isUnlocked ? "text-[#776A6E] font-medium" : "text-slate-400 font-medium"}`}
+                            className={`text-sm leading-snug ${isCurrent ? (isNightMode ? "font-bold text-white" : "font-bold text-[#241A1D]") : isUnlocked ? (isNightMode ? "font-medium text-white/65" : "font-medium text-[#776A6E]") : isNightMode ? "font-medium text-white/30" : "font-medium text-slate-400"}`}
                           >
                             {lesson.title}
                           </h4>
                           <p
-                            className={`text-xs mt-0.5 flex items-center gap-1 ${isUnlocked ? "text-[#776A6E]" : "text-slate-400"}`}
+                            className={`mt-0.5 flex items-center gap-1 text-xs ${isUnlocked ? (isNightMode ? "text-white/40" : "text-[#776A6E]") : isNightMode ? "text-white/25" : "text-slate-400"}`}
                           >
                             {lesson.type === "VIDEO" ? (
                               <PlayCircle size={10} />
@@ -932,7 +1006,7 @@ export default function TelaDeAula() {
           <div className="flex min-w-0 items-center gap-3 md:gap-4">
             <button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="hidden md:flex items-center justify-center w-10 h-10 rounded-full hover:bg-[#E9E0E2] transition-colors text-[#776A6E]"
+              className={`hidden h-10 w-10 items-center justify-center rounded-full transition-colors md:flex ${isNightMode ? "text-white/55 hover:bg-white/10 hover:text-white" : "text-[#776A6E] hover:bg-[#E9E0E2]"}`}
             >
               <ChevronRight
                 size={20}
@@ -957,7 +1031,9 @@ export default function TelaDeAula() {
               >
                 {activeModule?.title || "Aula"}
               </span>
-              <p className={`mt-1 hidden max-w-[55vw] truncate text-xs font-semibold sm:block md:hidden ${isNightMode ? "text-white/60" : "text-[#776A6E]"}`}>
+              <p
+                className={`mt-1 hidden max-w-[55vw] truncate text-xs font-semibold sm:block md:hidden ${isNightMode ? "text-white/60" : "text-[#776A6E]"}`}
+              >
                 {course.title}
               </p>
             </div>
@@ -966,8 +1042,12 @@ export default function TelaDeAula() {
             <button
               type="button"
               onClick={toggleNightMode}
-              aria-label={isNightMode ? "Desativar modo noturno" : "Ativar modo noturno"}
-              title={isNightMode ? "Desativar modo noturno" : "Ativar modo noturno"}
+              aria-label={
+                isNightMode ? "Desativar modo noturno" : "Ativar modo noturno"
+              }
+              title={
+                isNightMode ? "Desativar modo noturno" : "Ativar modo noturno"
+              }
               aria-pressed={isNightMode}
               className={`flex h-9 w-9 items-center justify-center rounded-full border transition ${isNightMode ? "border-white/10 bg-white/10 text-amber-200 hover:bg-white/15" : "border-[#E9E0E2] bg-white text-[#641C32] hover:bg-[#F5EFEC]"}`}
             >
@@ -980,20 +1060,28 @@ export default function TelaDeAula() {
         <div className="max-w-4xl mx-auto w-full px-4 md:px-12 pt-6 md:pt-8 pb-44 md:pb-36">
           {activeLesson ? (
             <>
-              <p className={`mb-2 text-[11px] font-bold uppercase tracking-[0.16em] md:text-xs ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}>
+              <p
+                className={`mb-2 text-[11px] font-bold uppercase tracking-[0.16em] md:text-xs ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}
+              >
                 {course.title}
               </p>
-              <h1 className={`font-serif text-[2rem] leading-tight md:text-4xl mb-3 tracking-tight ${isNightMode ? "text-[#FFF9F5]" : "text-[#241A1D]"}`}>
+              <h1
+                className={`font-serif text-[2rem] leading-tight md:text-4xl mb-3 tracking-tight ${isNightMode ? "text-[#FFF9F5]" : "text-[#241A1D]"}`}
+              >
                 {activeLesson.title}
               </h1>
               <div className="mb-5 flex items-center gap-3">
-                <div className={`h-1.5 flex-1 overflow-hidden rounded-full ${isNightMode ? "bg-white/10" : "bg-[#E9E0E2]"}`}>
+                <div
+                  className={`h-1.5 flex-1 overflow-hidden rounded-full ${isNightMode ? "bg-white/10" : "bg-[#E9E0E2]"}`}
+                >
                   <div
                     className="h-full rounded-full bg-[#7D2943] transition-[width] duration-500"
                     style={{ width: `${courseProgressPercent}%` }}
                   />
                 </div>
-                <span className={`text-[11px] font-bold tabular-nums ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}>
+                <span
+                  className={`text-[11px] font-bold tabular-nums ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}
+                >
                   {courseProgressPercent}%
                 </span>
               </div>
@@ -1056,9 +1144,16 @@ export default function TelaDeAula() {
                   {videoError && (
                     <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/85 px-8 text-center text-white">
                       <div className="max-w-md">
-                        <PlayCircle size={44} className="mx-auto mb-4 text-rose-300" />
-                        <p className="font-bold">Vídeo incompatível ou indisponível</p>
-                        <p className="mt-2 text-sm text-white/75">{videoError}</p>
+                        <PlayCircle
+                          size={44}
+                          className="mx-auto mb-4 text-rose-300"
+                        />
+                        <p className="font-bold">
+                          Vídeo incompatível ou indisponível
+                        </p>
+                        <p className="mt-2 text-sm text-white/75">
+                          {videoError}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -1072,9 +1167,16 @@ export default function TelaDeAula() {
                   )}
                 </div>
               ) : (
-                <div className="w-full bg-white rounded-[2rem] border border-[#E9E0E2] p-10 mb-10 shadow-sm flex flex-col items-center justify-center min-h-[300px] text-center">
-                  <FileText size={48} className="text-[#641C32] mb-4" />
-                  <h3 className="text-xl font-bold text-[#241A1D] mb-2">
+                <div
+                  className={`mb-10 flex min-h-[300px] w-full flex-col items-center justify-center rounded-[2rem] border p-10 text-center shadow-sm transition-colors ${isNightMode ? "border-white/10 bg-white/5" : "border-[#E9E0E2] bg-white"}`}
+                >
+                  <FileText
+                    size={48}
+                    className={`mb-4 ${isNightMode ? "text-rose-200" : "text-[#641C32]"}`}
+                  />
+                  <h3
+                    className={`mb-2 text-xl font-bold ${isNightMode ? "text-white" : "text-[#241A1D]"}`}
+                  >
                     Material de Leitura
                   </h3>
                   {activeLesson.contentUrl &&
@@ -1082,11 +1184,21 @@ export default function TelaDeAula() {
                     <>
                       <button
                         type="button"
-                        onClick={() => void downloadMaterial(activeLesson.contentUrl, activeLesson.title)}
-                        disabled={downloadingMaterial === activeLesson.contentUrl}
+                        onClick={() =>
+                          void downloadMaterial(
+                            activeLesson.contentUrl,
+                            activeLesson.title,
+                          )
+                        }
+                        disabled={
+                          downloadingMaterial === activeLesson.contentUrl
+                        }
                         className="bg-[#641C32] text-white px-8 py-3.5 rounded-full font-bold shadow-md hover:bg-[#7D2943] transition-colors flex items-center gap-2"
                       >
-                        <DownloadCloud size={18} /> {downloadingMaterial === activeLesson.contentUrl ? "Baixando..." : "Baixar documento"}
+                        <DownloadCloud size={18} />{" "}
+                        {downloadingMaterial === activeLesson.contentUrl
+                          ? "Baixando..."
+                          : "Baixar documento"}
                       </button>
                     </>
                   ) : (
@@ -1102,7 +1214,9 @@ export default function TelaDeAula() {
               {activeLesson.type === "VIDEO" &&
                 isNativeVideo(activeLesson.contentUrl || "") &&
                 !videoError && (
-                  <div className={`mb-4 flex items-center justify-between rounded-2xl border px-3 py-2.5 ${isNightMode ? "border-white/10 bg-white/5" : "border-[#E9E0E2] bg-white"}`}>
+                  <div
+                    className={`mb-4 flex items-center justify-between rounded-2xl border px-3 py-2.5 ${isNightMode ? "border-white/10 bg-white/5" : "border-[#E9E0E2] bg-white"}`}
+                  >
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
@@ -1121,22 +1235,30 @@ export default function TelaDeAula() {
                         10s <RotateCw size={17} />
                       </button>
                     </div>
-                    <label className={`flex items-center gap-2 text-xs font-bold ${isNightMode ? "text-white/65" : "text-[#776A6E]"}`}>
+                    <label
+                      className={`flex items-center gap-2 text-xs font-bold ${isNightMode ? "text-white/65" : "text-[#776A6E]"}`}
+                    >
                       <span className="hidden sm:inline">Velocidade</span>
                       <select
                         value={playbackRate}
-                        onChange={(event) => changePlaybackRate(Number(event.target.value))}
+                        onChange={(event) =>
+                          changePlaybackRate(Number(event.target.value))
+                        }
                         className={`rounded-lg border px-2 py-1.5 outline-none ${isNightMode ? "border-white/10 bg-[#2B2430] text-white" : "border-[#E9E0E2] bg-[#FAF7F4] text-[#241A1D]"}`}
                       >
                         {[0.75, 1, 1.25, 1.5, 2].map((rate) => (
-                          <option key={rate} value={rate}>{rate}x</option>
+                          <option key={rate} value={rate}>
+                            {rate}x
+                          </option>
                         ))}
                       </select>
                     </label>
                   </div>
                 )}
 
-              <section className={`mb-8 overflow-hidden rounded-2xl border transition-colors ${isNightMode ? "border-white/10 bg-white/5" : "border-[#E9E0E2] bg-white"}`}>
+              <section
+                className={`mb-8 overflow-hidden rounded-2xl border transition-colors ${isNightMode ? "border-white/10 bg-white/5" : "border-[#E9E0E2] bg-white"}`}
+              >
                 <button
                   type="button"
                   onClick={() => setIsNotesOpen((current) => !current)}
@@ -1144,21 +1266,33 @@ export default function TelaDeAula() {
                   aria-expanded={isNotesOpen}
                 >
                   <span className="flex items-center gap-2">
-                    <NotebookPen size={18} className={isNightMode ? "text-rose-200" : "text-[#641C32]"} />
+                    <NotebookPen
+                      size={18}
+                      className={
+                        isNightMode ? "text-rose-200" : "text-[#641C32]"
+                      }
+                    />
                     Notas da aula
                   </span>
-                  <ChevronDown size={18} className={`transition-transform ${isNotesOpen ? "rotate-180" : ""}`} />
+                  <ChevronDown
+                    size={18}
+                    className={`transition-transform ${isNotesOpen ? "rotate-180" : ""}`}
+                  />
                 </button>
                 {isNotesOpen && (
                   <div className="px-4 pb-4">
                     <textarea
                       value={lessonNotes}
-                      onChange={(event) => updateLessonNotes(event.target.value)}
+                      onChange={(event) =>
+                        updateLessonNotes(event.target.value)
+                      }
                       rows={5}
                       placeholder="Registre aqui os principais aprendizados desta aula..."
                       className={`w-full resize-y rounded-xl border p-3 text-sm leading-relaxed outline-none transition focus:border-[#7D2943] ${isNightMode ? "border-white/10 bg-black/15 text-white placeholder:text-white/35" : "border-[#E9E0E2] bg-[#FAF7F4] text-[#241A1D] placeholder:text-[#9B8D91]"}`}
                     />
-                    <p className={`mt-2 text-[11px] ${isNightMode ? "text-white/45" : "text-[#776A6E]"}`}>
+                    <p
+                      className={`mt-2 text-[11px] ${isNightMode ? "text-white/45" : "text-[#776A6E]"}`}
+                    >
                       As notas ficam salvas neste dispositivo.
                     </p>
                   </div>
@@ -1168,8 +1302,15 @@ export default function TelaDeAula() {
               {activeLesson.attachments &&
                 activeLesson.attachments.length > 0 && (
                   <div className="mb-12">
-                    <h3 className="font-bold text-[#241A1D] mb-4 flex items-center gap-2">
-                      <Paperclip size={18} className="text-[#776A6E]" />{" "}
+                    <h3
+                      className={`mb-4 flex items-center gap-2 font-bold ${isNightMode ? "text-white" : "text-[#241A1D]"}`}
+                    >
+                      <Paperclip
+                        size={18}
+                        className={
+                          isNightMode ? "text-white/55" : "text-[#776A6E]"
+                        }
+                      />{" "}
                       Materiais Complementares
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1177,11 +1318,19 @@ export default function TelaDeAula() {
                         <button
                           type="button"
                           key={att.id}
-                          onClick={() => att.url && void downloadMaterial(att.url, att.title || "material")}
+                          onClick={() =>
+                            att.url &&
+                            void downloadMaterial(
+                              att.url,
+                              att.title || "material",
+                            )
+                          }
                           disabled={!att.url || downloadingMaterial === att.url}
-                          className={`bg-white p-4 rounded-2xl border shadow-sm flex items-center gap-3 group transition-all ${!att.url ? "opacity-60 cursor-not-allowed border-rose-200" : "border-[#E9E0E2] hover:shadow-md"}`}
+                          className={`group flex items-center gap-3 rounded-2xl border p-4 shadow-sm transition-all ${isNightMode ? "bg-white/5" : "bg-white"} ${!att.url ? "cursor-not-allowed border-rose-200 opacity-60" : isNightMode ? "border-white/10 hover:bg-white/10 hover:shadow-md" : "border-[#E9E0E2] hover:shadow-md"}`}
                         >
-                          <div className="w-10 h-10 bg-[#F5EFEC] text-[#641C32] rounded-xl flex items-center justify-center shrink-0">
+                          <div
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${isNightMode ? "bg-white/10 text-rose-200" : "bg-[#F5EFEC] text-[#641C32]"}`}
+                          >
                             {att.type === "LINK" ? (
                               <LinkIcon size={18} />
                             ) : (
@@ -1189,11 +1338,19 @@ export default function TelaDeAula() {
                             )}
                           </div>
                           <div className="overflow-hidden">
-                            <h4 className="font-bold text-[#241A1D] text-sm group-hover:text-[#641C32] transition-colors truncate">
+                            <h4
+                              className={`truncate text-sm font-bold transition-colors ${isNightMode ? "text-white group-hover:text-rose-200" : "text-[#241A1D] group-hover:text-[#641C32]"}`}
+                            >
                               {att.title || "Material"}
                             </h4>
-                            <p className="mt-0.5 text-xs text-[#776A6E]">
-                              {downloadingMaterial === att.url ? "Baixando..." : att.type === "LINK" ? "Abrir link" : "Baixar arquivo"}
+                            <p
+                              className={`mt-0.5 text-xs ${isNightMode ? "text-white/45" : "text-[#776A6E]"}`}
+                            >
+                              {downloadingMaterial === att.url
+                                ? "Baixando..."
+                                : att.type === "LINK"
+                                  ? "Abrir link"
+                                  : "Baixar arquivo"}
                             </p>
                           </div>
                         </button>
@@ -1204,7 +1361,9 @@ export default function TelaDeAula() {
             </>
           ) : (
             <div className="text-center py-20">
-              <p className="text-[#776A6E] font-medium">
+              <p
+                className={`font-medium ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}
+              >
                 Selecione uma aula no menu lateral para começar.
               </p>
             </div>
@@ -1220,14 +1379,17 @@ export default function TelaDeAula() {
             onClick={() => setIsSupportOpen(true)}
             className={`flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl border px-4 text-sm font-bold transition-colors md:rounded-full md:px-6 ${isNightMode ? "border-white/10 bg-white/5 text-white/70 hover:bg-white/10" : "border-[#E9E0E2] bg-[#FAF7F4] text-[#776A6E] hover:text-[#241A1D]"}`}
           >
-            <MessageCircle size={17} /> <span className="hidden min-[355px]:inline">Dúvidas?</span>
+            <MessageCircle size={17} />{" "}
+            <span className="hidden min-[355px]:inline">Dúvidas?</span>
           </button>
 
           {!isCompleted ? (
             <div className="flex min-w-0 flex-1 items-center justify-end gap-4">
               {minimumWatchSeconds > 0 && (
                 <div className="hidden w-52 sm:block">
-                  <div className="mb-1.5 flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-[#776A6E]">
+                  <div
+                    className={`mb-1.5 flex items-center justify-between text-[11px] font-bold uppercase tracking-wide ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}
+                  >
                     <span>Tempo obrigatório</span>
                     <span>
                       {canComplete
@@ -1235,7 +1397,9 @@ export default function TelaDeAula() {
                         : `Faltam ${formatTime(remainingSeconds)}`}
                     </span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-[#E9E0E2]">
+                  <div
+                    className={`h-2 overflow-hidden rounded-full ${isNightMode ? "bg-white/10" : "bg-[#E9E0E2]"}`}
+                  >
                     <div
                       className="h-full rounded-full bg-[#641C32] transition-[width] duration-500"
                       style={{ width: `${watchProgressPercent}%` }}
@@ -1265,12 +1429,14 @@ export default function TelaDeAula() {
             </div>
           ) : (
             <div className="flex min-w-0 flex-1 items-center justify-end gap-4 animate-in slide-in-from-right-4 fade-in duration-500">
-              <div className="hidden sm:flex items-center gap-2 bg-[#F5EFEC] text-[#7D2943] px-4 py-2 rounded-full font-bold border border-[#E9E0E2]">
+              <div
+                className={`hidden items-center gap-2 rounded-full border px-4 py-2 font-bold sm:flex ${isNightMode ? "border-white/10 bg-white/10 text-rose-200" : "border-[#E9E0E2] bg-[#F5EFEC] text-[#7D2943]"}`}
+              >
                 <span>✓</span> Progresso salvo
               </div>
               <button
                 onClick={handleNextLesson}
-                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-[#241A1D] px-4 py-3 text-sm font-bold text-white shadow-xl shadow-black/10 transition-all hover:bg-black md:w-auto md:rounded-full md:px-8 md:text-base"
+                className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-xl shadow-black/10 transition-all md:w-auto md:rounded-full md:px-8 md:text-base ${isNightMode ? "bg-[#8F3651] hover:bg-[#A84663]" : "bg-[#241A1D] hover:bg-black"}`}
               >
                 {isLastLessonOfModule && hasPendingModuleGame
                   ? "Iniciar Avaliação"
