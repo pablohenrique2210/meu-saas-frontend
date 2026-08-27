@@ -1,5 +1,7 @@
-import { UserProfile as ClerkUserProfile } from "@clerk/nextjs";
-import { auth } from "@clerk/nextjs/server";
+"use client";
+
+import { UserProfile as ClerkUserProfile, useAuth } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   BookOpen,
@@ -10,6 +12,7 @@ import {
   ChevronRight,
   Clock3,
   Mail,
+  Loader2,
   Phone,
   ShieldCheck,
 } from "lucide-react";
@@ -77,40 +80,70 @@ function roleLabel(role: PlatformUserProfile["role"]) {
   return "Colaborador";
 }
 
-export default async function ProfilePage() {
-  await auth.protect();
-  const authState = await auth();
+export default function ProfilePage() {
+  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const [profile, setProfile] = useState<PlatformUserProfile | null>(null);
+  const [courses, setCourses] = useState<ProfileCourse[]>([]);
+  const [lessonProgress, setLessonProgress] = useState<LessonProgress[]>([]);
+  const [dataError, setDataError] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
-  let profile: PlatformUserProfile | null = null;
-  let courses: ProfileCourse[] = [];
-  let lessonProgress: LessonProgress[] = [];
-  let dataError = "";
+  useEffect(() => {
+    if (!isLoaded) return;
+    const controller = new AbortController();
 
-  try {
-    const token = await authState.getToken();
-    if (!token) throw new Error("Sessão sem token de acesso.");
-    const headers = { Authorization: `Bearer ${token}` };
-    const [profileResponse, coursesResponse, progressResponse] =
-      await Promise.all([
-        fetch(apiUrl("/api/users/me"), { cache: "no-store", headers }),
-        fetch(apiUrl("/api/courses"), { cache: "no-store", headers }),
-        fetch(apiUrl("/api/courses/user-progress"), {
-          cache: "no-store",
-          headers,
-        }),
-      ]);
+    void (async () => {
+      setIsLoading(true);
+      setDataError("");
+      try {
+        if (!isSignedIn) throw new Error("Inicie sessão para ver o perfil.");
+        const token = await getToken({ skipCache: true });
+        if (!token) throw new Error("A sessão não forneceu um token de acesso.");
+        const headers = { Authorization: `Bearer ${token}` };
+        const [profileResponse, coursesResponse, progressResponse] =
+          await Promise.all([
+            fetch(apiUrl("/api/users/me"), {
+              cache: "no-store",
+              headers,
+              signal: controller.signal,
+            }),
+            fetch(apiUrl("/api/courses"), {
+              cache: "no-store",
+              headers,
+              signal: controller.signal,
+            }),
+            fetch(apiUrl("/api/courses/user-progress"), {
+              cache: "no-store",
+              headers,
+              signal: controller.signal,
+            }),
+          ]);
 
-    if (!profileResponse.ok || !coursesResponse.ok || !progressResponse.ok) {
-      throw new Error("A API não respondeu corretamente.");
-    }
+        if (!profileResponse.ok || !coursesResponse.ok || !progressResponse.ok) {
+          throw new Error(
+            `Não foi possível consultar o perfil (${profileResponse.status}/${coursesResponse.status}/${progressResponse.status}).`,
+          );
+        }
 
-    profile = (await profileResponse.json()) as PlatformUserProfile;
-    courses = (await coursesResponse.json()) as ProfileCourse[];
-    lessonProgress = (await progressResponse.json()) as LessonProgress[];
-  } catch {
-    dataError =
-      "Não foi possível carregar agora os dados corporativos e de aprendizagem.";
-  }
+        setProfile((await profileResponse.json()) as PlatformUserProfile);
+        setCourses((await coursesResponse.json()) as ProfileCourse[]);
+        setLessonProgress(
+          (await progressResponse.json()) as LessonProgress[],
+        );
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setDataError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível carregar os dados do perfil.",
+        );
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [getToken, isLoaded, isSignedIn]);
 
   const progressByLesson = new Map(
     lessonProgress.map((progress) => [progress.lessonId, progress]),
@@ -194,6 +227,13 @@ export default async function ProfilePage() {
             <ShieldCheck size={16} /> Conta protegida
           </div>
         </header>
+
+        {isLoading && (
+          <div className="mb-6 flex items-center gap-3 rounded-2xl border border-[#E9E0E2] bg-white px-5 py-4 text-sm font-semibold text-[#776A6E]">
+            <Loader2 size={18} className="animate-spin text-[#641C32]" />
+            Carregando empresa, cursos e progresso...
+          </div>
+        )}
 
         {dataError && (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">

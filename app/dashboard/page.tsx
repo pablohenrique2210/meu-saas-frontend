@@ -1,7 +1,9 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { useAuth, useUser } from "@clerk/nextjs";
+import { Loader2 } from "lucide-react";
 
 // 🚀 IMPORT CORRIGIDO: O "../" faz o código sair da pasta dashboard e encontrar o botão na pasta app!
 import BotaoPerfil from "../BotaoPerfil";
@@ -31,46 +33,61 @@ interface DashboardProgress {
   updatedAt: string;
 }
 
-export default async function DashboardColaborador() {
-  // =========================================
-  // 1. AUTENTICAÇÃO
-  // =========================================
-  const authState = await auth();
-  const { userId } = authState;
-  const user = await currentUser();
+export default function DashboardColaborador() {
+  const { user, isLoaded } = useUser();
+  const { getToken, isSignedIn } = useAuth();
+  const [courses, setCourses] = useState<DashboardCourse[]>([]);
+  const [progress, setProgress] = useState<DashboardProgress[]>([]);
+  const [connectionError, setConnectionError] = useState("");
+  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
 
-  if (!userId || !user) {
-    redirect("/sign-in");
-  }
+  useEffect(() => {
+    if (!isLoaded) return;
+    const controller = new AbortController();
 
-  // =========================================
-  // 2. BUSCANDO DADOS REAIS DO NESTJS
-  // =========================================
-  let courses: DashboardCourse[] = [];
-  let progress: DashboardProgress[] = [];
-  let connectionError = false;
+    void (async () => {
+      setIsDashboardLoading(true);
+      setConnectionError("");
+      try {
+        if (!isSignedIn) throw new Error("Inicie sessão para ver seus cursos.");
+        const token = await getToken({ skipCache: true });
+        if (!token) throw new Error("A sessão não forneceu um token de acesso.");
+        const headers = { Authorization: `Bearer ${token}` };
+        const [coursesResponse, progressResponse] = await Promise.all([
+          fetch(apiUrl("/api/courses"), {
+            cache: "no-store",
+            headers,
+            signal: controller.signal,
+          }),
+          fetch(apiUrl("/api/courses/user-progress"), {
+            cache: "no-store",
+            headers,
+            signal: controller.signal,
+          }),
+        ]);
 
-  try {
-    const token = await authState.getToken();
-    if (!token) throw new Error("Sessão sem token");
-    const headers = { Authorization: `Bearer ${token}` };
-    // Busca os cursos
-    const coursesRes = await fetch(apiUrl("/api/courses"), {
-      cache: "no-store",
-      headers,
-    });
-    if (coursesRes.ok) courses = (await coursesRes.json()) as DashboardCourse[];
+        if (!coursesResponse.ok || !progressResponse.ok) {
+          throw new Error(
+            `Não foi possível consultar os cursos (${coursesResponse.status}/${progressResponse.status}).`,
+          );
+        }
 
-    // Busca o progresso deste utilizador
-    const progressRes = await fetch(
-      apiUrl("/api/courses/user-progress"),
-      { cache: "no-store", headers },
-    );
-    if (progressRes.ok)
-      progress = (await progressRes.json()) as DashboardProgress[];
-  } catch {
-    connectionError = true;
-  }
+        setCourses((await coursesResponse.json()) as DashboardCourse[]);
+        setProgress((await progressResponse.json()) as DashboardProgress[]);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setConnectionError(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível conectar ao backend.",
+        );
+      } finally {
+        if (!controller.signal.aborted) setIsDashboardLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [getToken, isLoaded, isSignedIn]);
 
   // =========================================
   // 3. MATEMÁTICA REAL DO DASHBOARD
@@ -184,8 +201,14 @@ export default async function DashboardColaborador() {
 
         {connectionError && (
           <div className="mb-8 bg-rose-50 border border-rose-200 text-rose-600 p-4 rounded-xl flex items-center gap-3">
-            <span>⚠️</span> O servidor do banco de dados (NestJS) parece estar
-            desligado. As tuas estatísticas podem não estar atualizadas.
+            <span>⚠️</span> {connectionError}
+          </div>
+        )}
+
+        {isDashboardLoading && (
+          <div className="mb-8 flex items-center gap-3 rounded-xl border border-[#E9E0E2] bg-white p-4 text-sm font-semibold text-[#776A6E]">
+            <Loader2 size={18} className="animate-spin text-[#641C32]" />
+            Carregando cursos e progresso...
           </div>
         )}
 
@@ -193,7 +216,7 @@ export default async function DashboardColaborador() {
         <header className="flex flex-col md:flex-row md:justify-between md:items-end mb-12 gap-6">
           <div>
             <h2 className="font-serif text-4xl text-[#241A1D] tracking-tight mb-2">
-              Olá, {user.firstName || "Colaborador"}.
+              Olá, {user?.firstName || "Colaborador"}.
             </h2>
             <p className="text-lg text-[#776A6E]">
               Bem-vindo de volta ao teu espaço de evolução e foco.
