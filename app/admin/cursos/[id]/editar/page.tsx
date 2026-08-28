@@ -38,6 +38,21 @@ interface UploadedMaterial {
   mimeType: string;
   materialType: string;
 }
+
+interface UploadChunkResponse extends Partial<UploadedMaterial> {
+  complete: boolean;
+}
+
+async function apiErrorMessage(response: Response, fallback: string) {
+  const payload = (await response.json().catch(() => null)) as {
+    message?: string | string[];
+    code?: string;
+  } | null;
+  const message = Array.isArray(payload?.message)
+    ? payload.message.join(", ")
+    : payload?.message;
+  return `${message || fallback} (HTTP ${response.status})`;
+}
 interface Lesson {
   id: string;
   title: string;
@@ -55,6 +70,31 @@ interface Module {
   gameType: "" | "DILEMA" | "INSPECAO" | "CORRIDA";
   gameConfigText: string;
   lessons: Lesson[];
+}
+
+interface CourseApiResponse {
+  title: string;
+  description?: string | null;
+  category: string;
+  author?: string | null;
+  coverUrl?: string | null;
+  isPublished: boolean;
+  modules?: Array<{
+    id: string;
+    title: string;
+    gameType?: Module["gameType"] | null;
+    gameConfig?: unknown;
+    lessons: Array<{
+      id: string;
+      title: string;
+      type: string;
+      duration: number;
+      minimumWatchSeconds?: number | null;
+      contentUrl?: string | null;
+      isPublished?: boolean;
+      attachments?: Attachment[];
+    }>;
+  }>;
 }
 
 const steps = [
@@ -116,6 +156,7 @@ export function CourseEditor({
   >("idle");
   const [isLoading, setIsLoading] = useState(Boolean(courseId));
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [toast, setToast] = useState({
     show: false,
     message: "",
@@ -147,7 +188,7 @@ export function CourseEditor({
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error("Curso não encontrado");
-        const data = await res.json();
+        const data = (await res.json()) as CourseApiResponse;
 
         setFormData({
           title: data.title,
@@ -159,14 +200,14 @@ export function CourseEditor({
         });
 
         if (data.modules) {
-          const loadedModules = data.modules.map((m: any) => ({
+          const loadedModules: Module[] = data.modules.map((m) => ({
             id: m.id,
             title: m.title,
             gameType: m.gameType || "",
             gameConfigText: m.gameConfig
               ? JSON.stringify(m.gameConfig, null, 2)
               : "",
-            lessons: m.lessons.map((l: any) => ({
+            lessons: m.lessons.map((l) => ({
               id: l.id,
               title: l.title,
               type: l.type,
@@ -177,10 +218,10 @@ export function CourseEditor({
                 !l.contentUrl?.includes("uploads")
                   ? "LINK"
                   : "UPLOAD",
-              contentUrl: l.contentUrl,
+              contentUrl: l.contentUrl || "",
               published: l.isPublished ?? true,
               attachments: l.attachments
-                ? l.attachments.map((a: any) => ({
+                ? l.attachments.map((a) => ({
                     id: a.id,
                     title: a.title,
                     type: a.type,
@@ -191,7 +232,7 @@ export function CourseEditor({
           }));
           setModules(loadedModules);
         }
-      } catch (err) {
+      } catch {
         showToast("Erro ao carregar o curso.", "error");
       } finally {
         setIsLoading(false);
@@ -257,11 +298,11 @@ export function CourseEditor({
           : m,
       ),
     );
-  const updateLesson = (
+  const updateLesson = <Field extends keyof Lesson>(
     modId: string,
     lessonId: string,
-    field: keyof Lesson,
-    value: any,
+    field: Field,
+    value: Lesson[Field],
   ) =>
     setModules(
       modules.map((m) =>
@@ -302,12 +343,12 @@ export function CourseEditor({
           : m,
       ),
     );
-  const updateAttachment = (
+  const updateAttachment = <Field extends keyof Attachment>(
     modId: string,
     lessonId: string,
     attId: string,
-    field: keyof Attachment,
-    value: any,
+    field: Field,
+    value: Attachment[Field],
   ) =>
     setModules(
       modules.map((m) =>
@@ -386,26 +427,99 @@ export function CourseEditor({
   ): Promise<UploadedMaterial | null> => {
     if (!file) return null;
     setIsUploadingFiles(true);
+    setUploadProgress(0);
     showToast(`A carregar ${file.name}...`, "success");
     try {
       const token = await getToken({ skipCache: true });
       if (!token) throw new Error("Sessão sem token");
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch(apiUrl("/api/courses/upload"), {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-      if (!res.ok) throw new Error("Erro no upload");
-      const data = (await res.json()) as UploadedMaterial;
-      setIsUploadingFiles(false);
+      const chunkSize = 5 * 1024 * 1024;
+
+      let data: UploadedMaterial;
+      if (file.size <= chunkSize) {
+        const form = new FormData();
+        form.append("file", file);
+        const response = await fetch(apiUrl("/api/courses/upload"), {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        if (!response.ok) {
+          throw new Error(
+            await apiErrorMessage(response, "Erro ao enviar o arquivo"),
+          );
+        }
+        data = (await response.json()) as UploadedMaterial;
+        setUploadProgress(100);
+      } else {
+        const uploadId = crypto.randomUUID();
+        const totalChunks = Math.ceil(file.size / chunkSize);
+        let completedUpload: UploadChunkResponse | null = null;
+
+        for (let index = 0; index < totalChunks; index += 1) {
+          const start = index * chunkSize;
+          const chunk = file.slice(
+            start,
+            Math.min(start + chunkSize, file.size),
+          );
+          const form = new FormData();
+          form.append("file", chunk, file.name);
+          form.append("uploadId", uploadId);
+          form.append("chunkIndex", String(index));
+          form.append("totalChunks", String(totalChunks));
+          form.append("originalName", file.name);
+          form.append("mimeType", file.type || "application/octet-stream");
+
+          let response: Response | null = null;
+          for (let attempt = 1; attempt <= 3; attempt += 1) {
+            response = await fetch(apiUrl("/api/courses/upload/chunk"), {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+              body: form,
+            }).catch(() => null);
+            if (response?.ok) break;
+            if (attempt < 3) {
+              await new Promise((resolve) =>
+                setTimeout(resolve, attempt * 700),
+              );
+            }
+          }
+
+          if (!response) throw new Error("O servidor interrompeu o upload.");
+          if (!response.ok) {
+            throw new Error(
+              await apiErrorMessage(
+                response,
+                "Erro ao enviar parte do arquivo",
+              ),
+            );
+          }
+          completedUpload = (await response.json()) as UploadChunkResponse;
+          setUploadProgress(Math.round(((index + 1) / totalChunks) * 100));
+        }
+
+        if (
+          !completedUpload?.complete ||
+          !completedUpload.url ||
+          !completedUpload.originalName ||
+          !completedUpload.mimeType ||
+          !completedUpload.materialType
+        ) {
+          throw new Error("O servidor não concluiu a montagem do arquivo.");
+        }
+        data = completedUpload as UploadedMaterial;
+      }
+
       showToast(`Upload concluído!`, "success");
       return data;
     } catch (err) {
-      setIsUploadingFiles(false);
-      showToast("Falha no upload.", "error");
+      showToast(
+        err instanceof Error ? err.message : "Falha no upload.",
+        "error",
+      );
       return null;
+    } finally {
+      setIsUploadingFiles(false);
+      setUploadProgress(null);
     }
   };
 
@@ -504,7 +618,11 @@ export function CourseEditor({
           body: JSON.stringify(payload),
         },
       );
-      if (!response.ok) throw new Error("Falha na API");
+      if (!response.ok) {
+        throw new Error(
+          await apiErrorMessage(response, "Falha ao salvar o curso"),
+        );
+      }
 
       setSavingStatus("saved");
       showToast(
@@ -518,7 +636,12 @@ export function CourseEditor({
       else setTimeout(() => setSavingStatus("idle"), 3000);
     } catch (error) {
       setSavingStatus("error");
-      showToast("Erro ao gravar as alterações.", "error");
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Erro ao gravar as alterações.",
+        "error",
+      );
     }
   };
 
@@ -533,7 +656,7 @@ export function CourseEditor({
 
   return (
     <div
-      className={`${embedded ? "fixed inset-0 z-[120] overflow-y-auto" : "min-h-screen"} bg-[#FAF7F4] font-sans text-[#241A1D] pb-32`}
+      className={`${embedded ? "fixed inset-0 z-[120] overflow-y-auto" : "min-h-screen"} bg-[#FAF7F4] pb-24 font-sans text-[#241A1D] sm:pb-32`}
     >
       <AnimatePresence>
         {toast.show && (
@@ -541,10 +664,10 @@ export function CourseEditor({
             initial={{ opacity: 0, y: -20, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.9 }}
-            className="fixed top-6 left-1/2 transform -translate-x-1/2 z-[100]"
+            className="fixed left-1/2 top-3 z-[180] w-[calc(100%-1.5rem)] max-w-xl -translate-x-1/2 transform sm:top-6 sm:w-auto"
           >
             <div
-              className={`flex items-center gap-3 px-6 py-3.5 rounded-2xl shadow-2xl font-bold text-sm border backdrop-blur-md ${toast.type === "error" ? "bg-rose-500/90 border-rose-400 text-white" : "bg-[#241A1D]/95 border-[#241A1D] text-white"}`}
+              className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-xs font-bold shadow-2xl backdrop-blur-md sm:items-center sm:px-6 sm:py-3.5 sm:text-sm ${toast.type === "error" ? "border-rose-400 bg-rose-500/95 text-white" : "border-[#241A1D] bg-[#241A1D]/95 text-white"}`}
             >
               {toast.type === "error" ? (
                 <AlertCircle size={18} />
@@ -557,8 +680,8 @@ export function CourseEditor({
         )}
       </AnimatePresence>
 
-      <header className="fixed top-0 left-0 right-0 h-20 bg-white/80 backdrop-blur-lg border-b border-slate-200 z-50 px-6 lg:px-12 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-4">
+      <header className="fixed left-0 right-0 top-0 z-50 flex h-20 items-center justify-between gap-2 border-b border-slate-200 bg-white/90 px-3 shadow-sm backdrop-blur-lg sm:px-6 lg:px-12">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-4">
           {embedded ? (
             <button
               type="button"
@@ -576,41 +699,44 @@ export function CourseEditor({
               <ArrowLeft size={18} />
             </Link>
           )}
-          <h1 className="font-sans text-xl font-bold text-slate-900 tracking-tight">
+          <h1 className="max-w-[40vw] truncate font-sans text-sm font-bold tracking-tight text-slate-900 sm:max-w-[50vw] sm:text-xl">
             {isCreating
               ? "Criar novo curso"
               : `A editar: ${formData.title || "Curso"}`}
           </h1>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
           {isUploadingFiles && (
-            <span className="text-sm font-bold text-amber-500 flex items-center gap-2">
-              <Loader2 className="animate-spin" size={16} /> Processando
-              arquivo...
+            <span className="hidden items-center gap-2 text-sm font-bold text-amber-600 sm:flex">
+              <Loader2 className="animate-spin" size={16} /> Enviando
+              {uploadProgress !== null ? ` ${uploadProgress}%` : "..."}
             </span>
           )}
           <button
             onClick={handleSave}
             disabled={savingStatus === "saving" || isUploadingFiles}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-[#641C32] hover:bg-[#7D2943] shadow-md transition-all"
+            className="flex min-h-11 items-center gap-2 rounded-xl bg-[#641C32] px-3 py-2.5 text-xs font-bold text-white shadow-md transition-all hover:bg-[#7D2943] disabled:opacity-60 sm:px-6 sm:text-sm"
           >
             {savingStatus === "saving" ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <Zap size={16} />
             )}{" "}
-            {isCreating ? "Criar curso" : "Salvar alterações"}
+            <span className="hidden sm:inline">
+              {isCreating ? "Criar curso" : "Salvar alterações"}
+            </span>
+            <span className="sm:hidden">{isCreating ? "Criar" : "Salvar"}</span>
           </button>
         </div>
       </header>
 
-      <nav className="fixed top-20 left-0 right-0 h-16 bg-white/90 backdrop-blur-md border-b border-slate-200 z-40 flex items-center justify-center shadow-sm">
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+      <nav className="fixed left-0 right-0 top-20 z-40 flex h-16 items-center justify-start overflow-hidden border-b border-slate-200 bg-white/95 px-2 shadow-sm backdrop-blur-md sm:justify-center">
+        <div className="scrollbar-hide flex w-full items-center gap-1 overflow-x-auto sm:w-auto sm:gap-2">
           {steps.map((step) => (
             <button
               key={step.id}
               onClick={() => setCurrentStep(step.id)}
-              className={`group flex items-center gap-2.5 px-6 py-2.5 rounded-full text-sm font-bold transition-all relative ${currentStep === step.id ? "text-[#241A1D]" : "text-slate-500 hover:bg-slate-50"}`}
+              className={`group relative flex shrink-0 items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold transition-all sm:gap-2.5 sm:px-6 sm:text-sm ${currentStep === step.id ? "text-[#241A1D]" : "text-slate-500 hover:bg-slate-50"}`}
             >
               <step.icon
                 size={16}
@@ -630,7 +756,7 @@ export function CourseEditor({
         </div>
       </nav>
 
-      <main className="max-w-[1400px] mx-auto px-6 lg:px-12 pt-48 grid grid-cols-1 xl:grid-cols-[1fr,360px] gap-8 items-start">
+      <main className="mx-auto grid max-w-[1400px] grid-cols-1 items-start gap-5 px-3 pt-44 sm:gap-8 sm:px-6 sm:pt-48 lg:px-12 xl:grid-cols-[minmax(0,1fr),360px]">
         <div className="flex-1">
           <AnimatePresence mode="wait">
             {currentStep === "info" && (
@@ -638,7 +764,7 @@ export function CourseEditor({
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className="bg-white p-8 md:p-10 rounded-[2rem] border border-slate-200 shadow-sm space-y-8"
+                className="space-y-6 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm sm:space-y-8 sm:rounded-[2rem] sm:p-8 md:p-10"
               >
                 <div>
                   <h2 className="text-2xl font-bold text-slate-900">
@@ -658,7 +784,7 @@ export function CourseEditor({
                     className="w-full bg-[#FAF7F4] border border-slate-200 rounded-2xl py-4 px-5 text-lg font-medium outline-none focus:border-[#641C32]"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-8">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">
                       Autor
@@ -712,7 +838,7 @@ export function CourseEditor({
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -15 }}
-                className="bg-white p-8 md:p-10 rounded-[2rem] border border-slate-200 shadow-sm"
+                className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm sm:rounded-[2rem] sm:p-8 md:p-10"
               >
                 <h2 className="text-2xl font-bold text-slate-900 mb-6">
                   Capa do Curso
@@ -761,13 +887,13 @@ export function CourseEditor({
                 exit={{ opacity: 0, y: -15 }}
                 className="space-y-6"
               >
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
                   <h2 className="text-2xl font-bold text-slate-900">
                     Estrutura do Curso
                   </h2>
                   <button
                     onClick={addModule}
-                    className="flex gap-2 items-center px-5 py-2.5 rounded-xl font-bold text-[#241A1D] bg-[#F5EFEC] border border-[#E9E0E2] hover:bg-[#E9E0E2]"
+                    className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#E9E0E2] bg-[#F5EFEC] px-5 py-2.5 font-bold text-[#241A1D] hover:bg-[#E9E0E2]"
                   >
                     <PlusCircle size={18} /> Adicionar Módulo
                   </button>
@@ -776,10 +902,13 @@ export function CourseEditor({
                 {modules.map((mod, mIndex) => (
                   <div
                     key={mod.id}
-                    className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
+                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:rounded-3xl"
                   >
-                    <div className="p-5 bg-[#FAF7F4] border-b border-slate-200 flex gap-4 items-center">
-                      <GripVertical size={20} className="text-slate-300" />
+                    <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-[#FAF7F4] p-4 sm:gap-4 sm:p-5">
+                      <GripVertical
+                        size={20}
+                        className="hidden text-slate-300 sm:block"
+                      />
                       <input
                         type="text"
                         value={mod.title || ""}
@@ -787,7 +916,7 @@ export function CourseEditor({
                           updateModuleTitle(mod.id, e.target.value)
                         }
                         placeholder={`Nome do Módulo ${mIndex + 1}`}
-                        className="flex-1 font-bold text-lg bg-transparent outline-none focus:border-b border-slate-400 py-1"
+                        className="min-w-0 flex-1 bg-transparent py-1 text-base font-bold outline-none focus:border-b sm:text-lg"
                       />
                       <button
                         onClick={() => removeModule(mod.id)}
@@ -797,7 +926,7 @@ export function CourseEditor({
                       </button>
                       <button
                         onClick={() => addLesson(mod.id)}
-                        className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-lg font-bold text-sm shadow-sm hover:bg-slate-50"
+                        className="order-last flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold shadow-sm hover:bg-slate-50 sm:order-none sm:w-auto"
                       >
                         <PlusCircle size={16} /> Aula
                       </button>
@@ -840,13 +969,13 @@ export function CourseEditor({
                       )}
                     </div>
 
-                    <div className="p-4 space-y-4">
+                    <div className="space-y-4 p-3 sm:p-4">
                       {mod.lessons.map((lesson, lIndex) => (
                         <div
                           key={lesson.id}
-                          className="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-4"
+                          className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
                         >
-                          <div className="flex items-center gap-4">
+                          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                             <span className="font-bold text-slate-400 text-sm">
                               Aula {lIndex + 1}
                             </span>
@@ -862,7 +991,7 @@ export function CourseEditor({
                                 )
                               }
                               placeholder="Título da Aula"
-                              className="flex-1 font-bold text-slate-800 outline-none focus:border-b py-1"
+                              className="min-w-[180px] flex-1 py-1 font-bold text-slate-800 outline-none focus:border-b"
                             />
                             <button
                               onClick={() => removeLesson(mod.id, lesson.id)}
@@ -873,7 +1002,7 @@ export function CourseEditor({
                           </div>
 
                           <div className="flex flex-col gap-4">
-                            <div className="flex gap-4">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
                               <select
                                 value={lesson.type}
                                 onChange={(e) =>
@@ -884,7 +1013,7 @@ export function CourseEditor({
                                     e.target.value,
                                   )
                                 }
-                                className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold outline-none text-slate-700"
+                                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none"
                               >
                                 <option value="VIDEO">Vídeo Principal</option>
                                 <option value="TEXT">
@@ -902,7 +1031,7 @@ export function CourseEditor({
                                       e.target.value,
                                     )
                                   }
-                                  className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold outline-none text-slate-700"
+                                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none"
                                 >
                                   <option value="UPLOAD">
                                     📁 Upload (MP4)
@@ -922,11 +1051,11 @@ export function CourseEditor({
                                     mod.id,
                                     lesson.id,
                                     "duration",
-                                    e.target.value,
+                                    Number(e.target.value),
                                   )
                                 }
                                 placeholder="Duração (min)"
-                                className="w-36 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center outline-none"
+                                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-center text-sm outline-none"
                               />
                               {lesson.type === "VIDEO" &&
                                 lesson.videoMode === "UPLOAD" && (
@@ -950,15 +1079,15 @@ export function CourseEditor({
                                       )
                                     }
                                     placeholder="Mínimo (min)"
-                                    className="w-36 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 text-sm text-center font-semibold text-[#641C32] outline-none"
+                                    className="w-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-center text-sm font-semibold text-[#641C32] outline-none"
                                   />
                                 )}
                             </div>
 
-                            <div className="flex-1 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
+                            <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 sm:px-4">
                               {lesson.type === "VIDEO" &&
                               lesson.videoMode === "UPLOAD" ? (
-                                <div className="w-full flex items-center justify-between">
+                                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                   <div className="flex items-center gap-2">
                                     <Video
                                       size={18}
@@ -981,7 +1110,7 @@ export function CourseEditor({
                                       );
                                       e.target.value = "";
                                     }}
-                                    className="text-sm text-slate-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#F5EFEC] file:text-[#641C32] file:cursor-pointer hover:file:bg-[#E9E0E2]"
+                                    className="w-full min-w-0 text-xs text-slate-500 file:mr-2 file:cursor-pointer file:rounded-full file:border-0 file:bg-[#F5EFEC] file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-[#641C32] hover:file:bg-[#E9E0E2] sm:w-auto sm:text-sm"
                                   />
                                 </div>
                               ) : lesson.type === "VIDEO" &&
@@ -1007,7 +1136,7 @@ export function CourseEditor({
                                   />
                                 </div>
                               ) : (
-                                <div className="w-full flex items-center justify-between">
+                                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                   <div className="flex items-center gap-2">
                                     <Paperclip
                                       size={18}
@@ -1034,7 +1163,7 @@ export function CourseEditor({
                                           upload.url,
                                         );
                                     }}
-                                    className="text-sm text-slate-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#F5EFEC] file:text-[#641C32] file:cursor-pointer hover:file:bg-[#E9E0E2]"
+                                    className="w-full min-w-0 text-xs text-slate-500 file:mr-2 file:cursor-pointer file:rounded-full file:border-0 file:bg-[#F5EFEC] file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-[#641C32] hover:file:bg-[#E9E0E2] sm:w-auto sm:text-sm"
                                   />
                                 </div>
                               )}
@@ -1042,8 +1171,8 @@ export function CourseEditor({
                           </div>
 
                           {/* Materiais Complementares */}
-                          <div className="pt-4 border-t border-slate-100 bg-slate-50/50 -mx-5 px-5 pb-2 -mb-2 rounded-b-2xl">
-                            <div className="flex justify-between items-center mb-3">
+                          <div className="-mx-4 -mb-2 rounded-b-2xl border-t border-slate-100 bg-slate-50/50 px-4 pb-2 pt-4 sm:-mx-5 sm:px-5">
+                            <div className="mb-3 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
                               <span className="text-xs font-bold text-slate-500 uppercase">
                                 Materiais Complementares
                               </span>
@@ -1057,7 +1186,7 @@ export function CourseEditor({
                             {lesson.attachments.map((att) => (
                               <div
                                 key={att.id}
-                                className="flex items-center gap-3 mb-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm"
+                                className="mb-3 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:flex-row md:items-center md:p-2"
                               >
                                 <select
                                   value={att.type}
@@ -1091,9 +1220,9 @@ export function CourseEditor({
                                     )
                                   }
                                   placeholder="Nome"
-                                  className="w-1/4 text-xs font-medium outline-none px-2 focus:border-b border-[#641C32]"
+                                  className="w-full border-[#641C32] px-2 text-xs font-medium outline-none focus:border-b md:w-1/4"
                                 />
-                                <div className="flex-1">
+                                <div className="w-full min-w-0 flex-1">
                                   {att.type !== "LINK" ? (
                                     <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2">
                                       <Paperclip
