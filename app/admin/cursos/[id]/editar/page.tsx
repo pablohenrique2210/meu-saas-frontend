@@ -39,14 +39,15 @@ interface UploadedMaterial {
   materialType: string;
 }
 
-interface UploadChunkResponse extends Partial<UploadedMaterial> {
-  complete: boolean;
-}
-
-interface UploadSessionResponse {
+interface DirectUploadSessionResponse {
+  strategy: "DIRECT_MULTIPART";
   uploadId: string;
-  uploadToken: string;
-  expiresInSeconds: number;
+  filename: string;
+  partSize: number;
+  parts: Array<{
+    partNumber: number;
+    signedUrl: string;
+  }>;
 }
 
 async function apiErrorMessage(response: Response, fallback: string) {
@@ -442,16 +443,13 @@ export function CourseEditor({
     setUploadProgress(0);
     showToast(`A carregar ${file.name}...`, "success");
     try {
-      const chunkSize = 2 * 1024 * 1024;
-
       const freshToken = async () => {
         const token = await getToken({ skipCache: true });
         if (!token) throw new Error("A sua sessão expirou. Entre novamente.");
         return token;
       };
 
-      let data: UploadedMaterial;
-      if (file.size <= chunkSize) {
+      const uploadSmallFile = async () => {
         const form = new FormData();
         form.append("file", file);
         const response = await fetch(apiUrl("/api/courses/upload"), {
@@ -464,84 +462,149 @@ export function CourseEditor({
             await apiErrorMessage(response, "Erro ao enviar o arquivo"),
           );
         }
-        data = (await response.json()) as UploadedMaterial;
+        const uploaded = (await response.json()) as UploadedMaterial;
         setUploadProgress(100);
-      } else {
-        const sessionResponse = await fetch(
-          apiUrl("/api/courses/upload/session"),
-          {
-            method: "POST",
-            headers: { Authorization: `Bearer ${await freshToken()}` },
+        return uploaded;
+      };
+
+      const sessionResponse = await fetch(
+        apiUrl("/api/courses/upload/direct/session"),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${await freshToken()}`,
+            "Content-Type": "application/json",
           },
-        );
-        if (!sessionResponse.ok) {
+          body: JSON.stringify({
+            originalName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            size: file.size,
+          }),
+        },
+      );
+
+      let data: UploadedMaterial;
+      if (!sessionResponse.ok) {
+        const errorPayload = (await sessionResponse.json().catch(() => null)) as {
+          code?: string;
+          message?: string | string[];
+        } | null;
+        if (
+          errorPayload?.code === "OBJECT_STORAGE_NOT_CONFIGURED" &&
+          file.size <= 8 * 1024 * 1024
+        ) {
+          data = await uploadSmallFile();
+        } else if (errorPayload?.code === "OBJECT_STORAGE_NOT_CONFIGURED") {
           throw new Error(
-            await apiErrorMessage(
-              sessionResponse,
-              "Não foi possível iniciar o upload",
-            ),
+            "O envio de vídeos exige um Railway Bucket conectado ao backend. Enquanto isso, use a opção Link com YouTube ou Vimeo.",
+          );
+        } else {
+          const message = Array.isArray(errorPayload?.message)
+            ? errorPayload.message.join(", ")
+            : errorPayload?.message;
+          throw new Error(
+            `${message || "Não foi possível iniciar o upload direto"} (HTTP ${sessionResponse.status})`,
           );
         }
-        const { uploadId, uploadToken } =
-          (await sessionResponse.json()) as UploadSessionResponse;
-        if (!uploadId || !uploadToken) {
-          throw new Error("O servidor não criou uma sessão de upload válida.");
+      } else {
+        const session =
+          (await sessionResponse.json()) as DirectUploadSessionResponse;
+        if (
+          session.strategy !== "DIRECT_MULTIPART" ||
+          !session.uploadId ||
+          !session.filename ||
+          !Number.isFinite(session.partSize) ||
+          session.partSize <= 0 ||
+          !Array.isArray(session.parts) ||
+          session.parts.length === 0
+        ) {
+          throw new Error("O servidor não criou uma sessão direta válida.");
         }
-        const totalChunks = Math.ceil(file.size / chunkSize);
-        let completedUpload: UploadChunkResponse | null = null;
 
-        for (let index = 0; index < totalChunks; index += 1) {
-          const start = index * chunkSize;
-          const chunk = file.slice(
-            start,
-            Math.min(start + chunkSize, file.size),
-          );
-          let response: Response | null = null;
-          for (let attempt = 1; attempt <= 3; attempt += 1) {
-            const form = new FormData();
-            form.append("file", chunk, file.name);
-            form.append("uploadId", uploadId);
-            form.append("chunkIndex", String(index));
-            form.append("totalChunks", String(totalChunks));
-            form.append("originalName", file.name);
-            form.append("mimeType", file.type || "application/octet-stream");
+        let uploadFinished = false;
+        try {
+          for (let index = 0; index < session.parts.length; index += 1) {
+            const part = session.parts[index];
+            const start = (part.partNumber - 1) * session.partSize;
+            const body = file.slice(
+              start,
+              Math.min(start + session.partSize, file.size),
+            );
+            let uploaded = false;
+            let lastStatus: number | null = null;
 
-            response = await fetch(apiUrl("/api/courses/upload/chunk"), {
-              method: "POST",
-              headers: { "X-Upload-Token": uploadToken },
-              body: form,
-            }).catch(() => null);
-            if (response?.ok) break;
-            if (attempt < 3) {
-              await new Promise((resolve) =>
-                setTimeout(resolve, attempt * 700),
+            for (let attempt = 1; attempt <= 3; attempt += 1) {
+              const response = await fetch(part.signedUrl, {
+                method: "PUT",
+                body,
+              }).catch(() => null);
+              lastStatus = response?.status ?? null;
+              if (response?.ok) {
+                uploaded = true;
+                break;
+              }
+              if (attempt < 3) {
+                await new Promise((resolve) =>
+                  setTimeout(resolve, attempt * 800),
+                );
+              }
+            }
+
+            if (!uploaded) {
+              throw new Error(
+                `O Bucket interrompeu a parte ${part.partNumber}${lastStatus ? ` (HTTP ${lastStatus})` : ""}. Verifique o CORS do Bucket Railway.`,
               );
             }
+            setUploadProgress(
+              Math.round(((index + 1) / session.parts.length) * 96),
+            );
           }
 
-          if (!response) throw new Error("O servidor interrompeu o upload.");
-          if (!response.ok) {
+          const completionResponse = await fetch(
+            apiUrl("/api/courses/upload/direct/complete"),
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${await freshToken()}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                uploadId: session.uploadId,
+                filename: session.filename,
+                originalName: file.name,
+                mimeType: file.type || "application/octet-stream",
+              }),
+            },
+          );
+          if (!completionResponse.ok) {
             throw new Error(
               await apiErrorMessage(
-                response,
-                "Erro ao enviar parte do arquivo",
+                completionResponse,
+                "Não foi possível concluir o upload no Bucket",
               ),
             );
           }
-          completedUpload = (await response.json()) as UploadChunkResponse;
-          setUploadProgress(Math.round(((index + 1) / totalChunks) * 100));
+          data = (await completionResponse.json()) as UploadedMaterial;
+          uploadFinished = true;
+          setUploadProgress(100);
+        } finally {
+          if (!uploadFinished) {
+            const token = await getToken({ skipCache: true }).catch(() => null);
+            if (token) {
+              await fetch(apiUrl("/api/courses/upload/direct/abort"), {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  uploadId: session.uploadId,
+                  filename: session.filename,
+                }),
+              }).catch(() => null);
+            }
+          }
         }
-
-        if (
-          !completedUpload?.complete ||
-          !completedUpload.url ||
-          !completedUpload.originalName ||
-          !completedUpload.mimeType ||
-          !completedUpload.materialType
-        ) {
-          throw new Error("O servidor não concluiu a montagem do arquivo.");
-        }
-        data = completedUpload as UploadedMaterial;
       }
 
       let assetAvailable = false;
