@@ -43,6 +43,12 @@ interface UploadChunkResponse extends Partial<UploadedMaterial> {
   complete: boolean;
 }
 
+interface UploadSessionResponse {
+  uploadId: string;
+  uploadToken: string;
+  expiresInSeconds: number;
+}
+
 async function apiErrorMessage(response: Response, fallback: string) {
   const payload = (await response.json().catch(() => null)) as {
     message?: string | string[];
@@ -430,7 +436,7 @@ export function CourseEditor({
     setUploadProgress(0);
     showToast(`A carregar ${file.name}...`, "success");
     try {
-      const chunkSize = 5 * 1024 * 1024;
+      const chunkSize = 2 * 1024 * 1024;
 
       const freshToken = async () => {
         const token = await getToken({ skipCache: true });
@@ -455,7 +461,26 @@ export function CourseEditor({
         data = (await response.json()) as UploadedMaterial;
         setUploadProgress(100);
       } else {
-        const uploadId = crypto.randomUUID();
+        const sessionResponse = await fetch(
+          apiUrl("/api/courses/upload/session"),
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${await freshToken()}` },
+          },
+        );
+        if (!sessionResponse.ok) {
+          throw new Error(
+            await apiErrorMessage(
+              sessionResponse,
+              "Não foi possível iniciar o upload",
+            ),
+          );
+        }
+        const { uploadId, uploadToken } =
+          (await sessionResponse.json()) as UploadSessionResponse;
+        if (!uploadId || !uploadToken) {
+          throw new Error("O servidor não criou uma sessão de upload válida.");
+        }
         const totalChunks = Math.ceil(file.size / chunkSize);
         let completedUpload: UploadChunkResponse | null = null;
 
@@ -467,8 +492,6 @@ export function CourseEditor({
           );
           let response: Response | null = null;
           for (let attempt = 1; attempt <= 3; attempt += 1) {
-            // O token do Clerk tem validade curta. Ele precisa ser renovado
-            // durante uploads longos e também antes de cada nova tentativa.
             const form = new FormData();
             form.append("file", chunk, file.name);
             form.append("uploadId", uploadId);
@@ -479,7 +502,7 @@ export function CourseEditor({
 
             response = await fetch(apiUrl("/api/courses/upload/chunk"), {
               method: "POST",
-              headers: { Authorization: `Bearer ${await freshToken()}` },
+              headers: { "X-Upload-Token": uploadToken },
               body: form,
             }).catch(() => null);
             if (response?.ok) break;
