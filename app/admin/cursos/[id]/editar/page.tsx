@@ -430,9 +430,13 @@ export function CourseEditor({
     setUploadProgress(0);
     showToast(`A carregar ${file.name}...`, "success");
     try {
-      const token = await getToken({ skipCache: true });
-      if (!token) throw new Error("Sessão sem token");
       const chunkSize = 5 * 1024 * 1024;
+
+      const freshToken = async () => {
+        const token = await getToken({ skipCache: true });
+        if (!token) throw new Error("A sua sessão expirou. Entre novamente.");
+        return token;
+      };
 
       let data: UploadedMaterial;
       if (file.size <= chunkSize) {
@@ -440,7 +444,7 @@ export function CourseEditor({
         form.append("file", file);
         const response = await fetch(apiUrl("/api/courses/upload"), {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${await freshToken()}` },
           body: form,
         });
         if (!response.ok) {
@@ -461,19 +465,21 @@ export function CourseEditor({
             start,
             Math.min(start + chunkSize, file.size),
           );
-          const form = new FormData();
-          form.append("file", chunk, file.name);
-          form.append("uploadId", uploadId);
-          form.append("chunkIndex", String(index));
-          form.append("totalChunks", String(totalChunks));
-          form.append("originalName", file.name);
-          form.append("mimeType", file.type || "application/octet-stream");
-
           let response: Response | null = null;
           for (let attempt = 1; attempt <= 3; attempt += 1) {
+            // O token do Clerk tem validade curta. Ele precisa ser renovado
+            // durante uploads longos e também antes de cada nova tentativa.
+            const form = new FormData();
+            form.append("file", chunk, file.name);
+            form.append("uploadId", uploadId);
+            form.append("chunkIndex", String(index));
+            form.append("totalChunks", String(totalChunks));
+            form.append("originalName", file.name);
+            form.append("mimeType", file.type || "application/octet-stream");
+
             response = await fetch(apiUrl("/api/courses/upload/chunk"), {
               method: "POST",
-              headers: { Authorization: `Bearer ${token}` },
+              headers: { Authorization: `Bearer ${await freshToken()}` },
               body: form,
             }).catch(() => null);
             if (response?.ok) break;
