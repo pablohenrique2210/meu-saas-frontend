@@ -16,8 +16,17 @@ export const apiUrl = (path: string) =>
 export const apiAssetUrl = (value: string | null | undefined) => {
   const url = value?.trim();
   if (!url) return "";
-  if (/^(https?:|data:|blob:)/i.test(url)) return url;
-  if (/^(?:localhost(?::\d+)?|(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?)(?:\/|$)/i.test(url)) {
+  if (/^(data:|blob:)/i.test(url)) return url;
+  const legacyUpload = url.match(/\/uploads\/([^/?#]+)(?:[?#].*)?$/i);
+  if (legacyUpload) {
+    return `${API_BASE_URL}/api/media/${legacyUpload[1]}`;
+  }
+  if (/^https?:/i.test(url)) return url;
+  if (
+    /^(?:localhost(?::\d+)?|(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?)(?:\/|$)/i.test(
+      url,
+    )
+  ) {
     return `${url.startsWith("localhost") ? "http" : "https"}://${url}`;
   }
   return `${API_BASE_URL}${url.startsWith("/") ? url : `/${url}`}`;

@@ -544,6 +544,25 @@ export function CourseEditor({
         data = completedUpload as UploadedMaterial;
       }
 
+      let assetAvailable = false;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const verification = await fetch(apiAssetUrl(data.url), {
+          headers: { Range: "bytes=0-0" },
+        }).catch(() => null);
+        if (verification?.ok || verification?.status === 206) {
+          assetAvailable = true;
+          break;
+        }
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+        }
+      }
+      if (!assetAvailable) {
+        throw new Error(
+          "O arquivo foi recebido, mas não ficou disponível no armazenamento. Verifique o volume ou bucket do Railway.",
+        );
+      }
+
       showToast(`Upload concluído!`, "success");
       return data;
     } catch (err) {

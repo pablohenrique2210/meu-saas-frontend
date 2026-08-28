@@ -42,7 +42,7 @@ interface Attachment {
 function uploadedFilename(url: string) {
   try {
     const pathname = new URL(url, API_BASE_URL).pathname;
-    const match = pathname.match(/\/uploads\/([^/]+)$/);
+    const match = pathname.match(/\/(?:uploads|api\/media)\/([^/]+)$/);
     return match ? decodeURIComponent(match[1]) : null;
   } catch {
     return null;
@@ -151,6 +151,7 @@ export default function TelaDeAula() {
   const [isCompleting, setIsCompleting] = useState(false);
   const [progressError, setProgressError] = useState("");
   const [videoError, setVideoError] = useState("");
+  const [mediaReloadKey, setMediaReloadKey] = useState(0);
   const [downloadingMaterial, setDownloadingMaterial] = useState<string | null>(
     null,
   );
@@ -643,6 +644,49 @@ export default function TelaDeAula() {
     return url;
   };
 
+  useEffect(() => {
+    if (
+      !activeLesson?.contentUrl ||
+      activeLesson.type !== "VIDEO" ||
+      !isNativeVideo(activeLesson.contentUrl)
+    ) {
+      return;
+    }
+    const controller = new AbortController();
+    const assetUrl = apiAssetUrl(activeLesson.contentUrl);
+    void fetch(assetUrl, {
+      headers: { Range: "bytes=0-0" },
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (response.status === 404) {
+          setVideoError(
+            "O arquivo deste vídeo não foi encontrado no armazenamento permanente. Reenvie o vídeo no editor do curso.",
+          );
+          return;
+        }
+        if (!response.ok && response.status !== 206) {
+          setVideoError(
+            `O servidor não conseguiu disponibilizar este vídeo (erro ${response.status}).`,
+          );
+          return;
+        }
+        setVideoError("");
+      })
+      .catch((mediaError) => {
+        if (
+          mediaError instanceof DOMException &&
+          mediaError.name === "AbortError"
+        ) {
+          return;
+        }
+        setVideoError(
+          "A conexão com o armazenamento do vídeo foi interrompida. Tente novamente.",
+        );
+      });
+    return () => controller.abort();
+  }, [activeLesson, mediaReloadKey]);
+
   const handleLessonChange = (mod: Module, less: Lesson) => {
     if (!isLessonUnlocked(less.id)) {
       setProgressError("Conclua a aula anterior antes de avançar.");
@@ -651,6 +695,7 @@ export default function TelaDeAula() {
     setActiveModule(mod);
     setActiveLesson(less);
     setVideoError("");
+    setMediaReloadKey(0);
     setIsCompleted(completedLessonIds.includes(less.id));
     setWatchedSeconds(0);
     setMinimumWatchSeconds(less.minimumWatchSeconds ?? 0);
@@ -1182,8 +1227,9 @@ export default function TelaDeAula() {
                   activeLesson.contentUrl.trim() !== "" ? (
                     isNativeVideo(activeLesson.contentUrl) ? (
                       <video
+                        key={`${activeLesson.id}:${mediaReloadKey}`}
                         ref={videoRef}
-                        src={apiAssetUrl(activeLesson.contentUrl)}
+                        src={`${apiAssetUrl(activeLesson.contentUrl)}${apiAssetUrl(activeLesson.contentUrl).includes("?") ? "&" : "?"}reload=${mediaReloadKey}`}
                         preload="metadata"
                         controls
                         controlsList="nodownload"
@@ -1242,6 +1288,16 @@ export default function TelaDeAula() {
                         <p className="mt-2 text-sm text-white/75">
                           {videoError}
                         </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVideoError("");
+                            setMediaReloadKey((current) => current + 1);
+                          }}
+                          className="mt-5 rounded-full border border-white/25 px-5 py-2 text-sm font-bold text-white transition hover:bg-white/10"
+                        >
+                          Tentar carregar novamente
+                        </button>
                       </div>
                     </div>
                   )}
