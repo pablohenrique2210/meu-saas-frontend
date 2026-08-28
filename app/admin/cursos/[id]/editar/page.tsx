@@ -68,6 +68,7 @@ interface Lesson {
   videoMode: string;
   contentUrl: string;
   published: boolean;
+  quizConfigText: string;
   attachments: Attachment[];
 }
 interface Module {
@@ -98,6 +99,7 @@ interface CourseApiResponse {
       minimumWatchSeconds?: number | null;
       contentUrl?: string | null;
       isPublished?: boolean;
+      quizConfig?: unknown;
       attachments?: Attachment[];
     }>;
   }>;
@@ -226,6 +228,9 @@ export function CourseEditor({
                   : "UPLOAD",
               contentUrl: l.contentUrl || "",
               published: l.isPublished ?? true,
+              quizConfigText: l.quizConfig
+                ? JSON.stringify(l.quizConfig, null, 2)
+                : "",
               attachments: l.attachments
                 ? l.attachments.map((a) => ({
                     id: a.id,
@@ -289,6 +294,7 @@ export function CourseEditor({
                   minimumWatchSeconds: 0,
                   contentUrl: "",
                   published: true,
+                  quizConfigText: "",
                   attachments: [],
                 },
               ],
@@ -624,6 +630,9 @@ export function CourseEditor({
                 : 0,
             contentUrl: l.contentUrl,
             published: l.published,
+            quizConfig: l.quizConfigText.trim()
+              ? JSON.parse(l.quizConfigText)
+              : null,
             attachments: l.attachments
               .filter((a) => a.url.trim())
               .map((a) => ({
@@ -1197,6 +1206,38 @@ export function CourseEditor({
                                 </div>
                               )}
                             </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-[#E9E0E2] bg-[#FAF7F4] p-4">
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-wider text-[#641C32]">
+                                  Quiz ao final da aula
+                                </p>
+                                <p className="mt-1 text-xs text-slate-500">
+                                  O colaborador responde antes de liberar a
+                                  próxima aula.
+                                </p>
+                              </div>
+                              {lesson.quizConfigText.trim() && (
+                                <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-bold text-emerald-700">
+                                  Configurado
+                                </span>
+                              )}
+                            </div>
+                            <textarea
+                              value={lesson.quizConfigText}
+                              onChange={(event) =>
+                                updateLesson(
+                                  mod.id,
+                                  lesson.id,
+                                  "quizConfigText",
+                                  event.target.value,
+                                )
+                              }
+                              placeholder='{"title":"Quiz da aula","questions":[...]}'
+                              className="min-h-32 w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-xs outline-none focus:border-[#641C32]"
+                            />
                           </div>
 
                           {/* Materiais Complementares */}

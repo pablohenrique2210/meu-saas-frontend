@@ -27,8 +27,10 @@ import {
   RotateCw,
   NotebookPen,
   Menu,
+  Save,
 } from "lucide-react";
 import { API_BASE_URL, apiAssetUrl, apiUrl } from "@/lib/api-config";
+import { LessonQuiz } from "@/components/lessons/LessonQuiz";
 
 interface Attachment {
   id: string;
@@ -81,6 +83,8 @@ interface LessonProgressResponse {
   minimumWatchSeconds: number;
   remainingSeconds: number;
   canComplete: boolean;
+  quizRequired: boolean;
+  quizCompleted: boolean;
 }
 
 interface LessonProgressSummary {
@@ -141,6 +145,9 @@ export default function TelaDeAula() {
   const [minimumWatchSeconds, setMinimumWatchSeconds] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [canComplete, setCanComplete] = useState(false);
+  const [quizRequired, setQuizRequired] = useState(false);
+  const [quizCompleted, setQuizCompleted] = useState(true);
+  const [isLessonQuizOpen, setIsLessonQuizOpen] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [progressError, setProgressError] = useState("");
   const [videoError, setVideoError] = useState("");
@@ -150,6 +157,9 @@ export default function TelaDeAula() {
   const [isNightMode, setIsNightMode] = useState(false);
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [lessonNotes, setLessonNotes] = useState("");
+  const [notesStatus, setNotesStatus] = useState<
+    "idle" | "loading" | "saving" | "saved" | "error"
+  >("idle");
   const [playbackRate, setPlaybackRate] = useState(1);
 
   // 🚀 Modal de contato com a consultora (botão "Dúvidas?")
@@ -163,16 +173,43 @@ export default function TelaDeAula() {
   const isSavingProgress = useRef(false);
 
   useEffect(() => {
-    if (!activeLesson) return;
+    if (!activeLesson || !user) return;
+    const controller = new AbortController();
+    const lessonId = activeLesson.id;
     const frame = requestAnimationFrame(() => {
-      setLessonNotes(
-        localStorage.getItem(`lesson-notes:${activeLesson.id}`) ?? "",
-      );
+      setLessonNotes("");
+      setNotesStatus("loading");
       setIsNotesOpen(false);
       setPlaybackRate(1);
     });
-    return () => cancelAnimationFrame(frame);
-  }, [activeLesson]);
+    void (async () => {
+      try {
+        const token = await getToken({ skipCache: true });
+        if (!token) throw new Error("Sessão sem token");
+        const response = await fetch(
+          apiUrl(`/api/courses/lessons/${lessonId}/note`),
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          },
+        );
+        if (!response.ok) throw new Error("Não foi possível carregar a nota.");
+        const data = (await response.json()) as { content?: string };
+        const localBackup = localStorage.getItem(`lesson-notes:${lessonId}`);
+        const content = data.content || localBackup || "";
+        setLessonNotes(content);
+        setNotesStatus(data.content ? "saved" : "idle");
+      } catch (noteError) {
+        if (controller.signal.aborted) return;
+        setLessonNotes(localStorage.getItem(`lesson-notes:${lessonId}`) ?? "");
+        setNotesStatus("error");
+      }
+    })();
+    return () => {
+      controller.abort();
+      cancelAnimationFrame(frame);
+    };
+  }, [activeLesson, getToken, user]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("lesson-color-theme");
@@ -192,8 +229,35 @@ export default function TelaDeAula() {
 
   const updateLessonNotes = (value: string) => {
     setLessonNotes(value);
+    setNotesStatus("idle");
     if (activeLesson) {
       localStorage.setItem(`lesson-notes:${activeLesson.id}`, value);
+    }
+  };
+
+  const saveLessonNotes = async () => {
+    if (!activeLesson || !user || notesStatus === "saving") return;
+    setNotesStatus("saving");
+    try {
+      const token = await getToken({ skipCache: true });
+      if (!token) throw new Error("Sessão sem token");
+      const response = await fetch(
+        apiUrl(`/api/courses/lessons/${activeLesson.id}/note`),
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ content: lessonNotes }),
+        },
+      );
+      if (!response.ok) throw new Error("Não foi possível salvar a nota.");
+      localStorage.removeItem(`lesson-notes:${activeLesson.id}`);
+      setNotesStatus("saved");
+    } catch {
+      localStorage.setItem(`lesson-notes:${activeLesson.id}`, lessonNotes);
+      setNotesStatus("error");
     }
   };
 
@@ -339,6 +403,8 @@ export default function TelaDeAula() {
         setMinimumWatchSeconds(data.minimumWatchSeconds);
         setRemainingSeconds(data.remainingSeconds);
         setCanComplete(data.canComplete);
+        setQuizRequired(data.quizRequired);
+        setQuizCompleted(data.quizCompleted);
         setProgressError("");
         lastSavedTime.current = data.lastTime;
 
@@ -417,6 +483,8 @@ export default function TelaDeAula() {
       setMinimumWatchSeconds(data.minimumWatchSeconds);
       setRemainingSeconds(data.remainingSeconds);
       setCanComplete(data.canComplete);
+      setQuizRequired(data.quizRequired);
+      setQuizCompleted(data.quizCompleted);
       setIsCompleted(data.isCompleted);
       setProgressError("");
 
@@ -449,6 +517,10 @@ export default function TelaDeAula() {
   // 🚀 AÇÃO DE CONCLUIR AULA E DESTRANCAR A PRÓXIMA
   const handleMarkAsCompleted = async () => {
     if (!user || !activeLesson) return;
+    if (quizRequired && !quizCompleted) {
+      setIsLessonQuizOpen(true);
+      return;
+    }
     setIsCompleting(true);
     await saveProgressToCloud(
       videoRef.current ? videoRef.current.currentTime : 0,
@@ -456,6 +528,19 @@ export default function TelaDeAula() {
       true,
     );
     setIsCompleting(false);
+  };
+
+  const handleLessonQuizCompleted = async () => {
+    if (!activeLesson) return;
+    setQuizCompleted(true);
+    setIsCompleting(true);
+    const completed = await saveProgressToCloud(
+      videoRef.current ? videoRef.current.currentTime : lastSavedTime.current,
+      true,
+      true,
+    );
+    setIsCompleting(false);
+    if (completed) setIsLessonQuizOpen(false);
   };
 
   const handleNextLesson = () => {
@@ -573,6 +658,9 @@ export default function TelaDeAula() {
     setCanComplete(
       less.type !== "VIDEO" || (less.minimumWatchSeconds ?? 0) === 0,
     );
+    setQuizRequired(false);
+    setQuizCompleted(true);
+    setIsLessonQuizOpen(false);
     setProgressError("");
     setIsMobileSidebarOpen(false);
     lastSavedTime.current = 0;
@@ -1290,11 +1378,36 @@ export default function TelaDeAula() {
                       placeholder="Registre aqui os principais aprendizados desta aula..."
                       className={`w-full resize-y rounded-xl border p-3 text-sm leading-relaxed outline-none transition focus:border-[#7D2943] ${isNightMode ? "border-white/10 bg-black/15 text-white placeholder:text-white/35" : "border-[#E9E0E2] bg-[#FAF7F4] text-[#241A1D] placeholder:text-[#9B8D91]"}`}
                     />
-                    <p
-                      className={`mt-2 text-[11px] ${isNightMode ? "text-white/45" : "text-[#776A6E]"}`}
-                    >
-                      As notas ficam salvas neste dispositivo.
-                    </p>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                      <p
+                        className={`text-[11px] ${notesStatus === "error" ? "font-semibold text-rose-500" : isNightMode ? "text-white/45" : "text-[#776A6E]"}`}
+                      >
+                        {notesStatus === "loading"
+                          ? "Carregando suas anotações..."
+                          : notesStatus === "saving"
+                            ? "Salvando na sua conta..."
+                            : notesStatus === "saved"
+                              ? "Anotações salvas na sua conta."
+                              : notesStatus === "error"
+                                ? "Falha ao sincronizar. Mantivemos uma cópia neste dispositivo."
+                                : "Há alterações ainda não salvas."}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void saveLessonNotes()}
+                        disabled={
+                          notesStatus === "saving" || notesStatus === "loading"
+                        }
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[#641C32] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#7D2943] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {notesStatus === "saving" ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <Save size={15} />
+                        )}
+                        Salvar anotações
+                      </button>
+                    </div>
                   </div>
                 )}
               </section>
@@ -1370,6 +1483,15 @@ export default function TelaDeAula() {
           )}
         </div>
 
+        {isLessonQuizOpen && activeLesson && (
+          <LessonQuiz
+            lessonId={activeLesson.id}
+            isNightMode={isNightMode}
+            onCompleted={handleLessonQuizCompleted}
+            onClose={() => setIsLessonQuizOpen(false)}
+          />
+        )}
+
         {/* 3. BARRA INFERIOR */}
         <div
           className={`fixed bottom-0 right-0 z-40 flex items-stretch justify-between gap-3 border-t p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-10px_40px_rgba(0,0,0,0.06)] transition-all duration-500 md:items-center md:p-6 md:px-12 ${isNightMode ? "border-white/10 bg-[#2B2430]" : "border-[#E9E0E2] bg-white"} ${isSidebarOpen ? "left-0 md:left-72" : "left-0"}`}
@@ -1421,7 +1543,9 @@ export default function TelaDeAula() {
                   {isCompleting
                     ? "A concluir..."
                     : canComplete
-                      ? "Marcar como Concluída"
+                      ? quizRequired && !quizCompleted
+                        ? "Responder quiz da aula"
+                        : "Marcar como Concluída"
                       : `Assista mais ${formatTime(remainingSeconds)}`}{" "}
                   <CheckCircle2 size={18} />
                 </button>
