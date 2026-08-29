@@ -13,7 +13,7 @@ const MAX_VIDEO_SIZE_BYTES = 5 * 1024 * 1024 * 1024;
 const VIDEO_PATHNAME =
   /^courses\/videos\/[a-zA-Z0-9][a-zA-Z0-9._-]*\.(mp4|webm|ogg)$/i;
 
-async function canManageCourses() {
+async function canManageCourses(frontendOrigin: string) {
   const session = await auth();
   if (!session.userId) return false;
 
@@ -21,7 +21,10 @@ async function canManageCourses() {
   if (!clerkToken) return false;
 
   const response = await fetch(apiUrl("/api/users/me/rh-access"), {
-    headers: { Authorization: `Bearer ${clerkToken}` },
+    headers: {
+      Authorization: `Bearer ${clerkToken}`,
+      Origin: frontendOrigin,
+    },
     cache: "no-store",
   });
   if (!response.ok) return false;
@@ -34,12 +37,13 @@ async function canManageCourses() {
 
 export async function POST(request: Request) {
   try {
+    const frontendOrigin = new URL(request.url).origin;
     const body = (await request.json()) as HandleUploadPresignedBody;
     const jsonResponse = await handleUploadPresigned({
       body,
       request,
       getSignedToken: async (pathname) => {
-        if (!(await canManageCourses())) {
+        if (!(await canManageCourses(frontendOrigin))) {
           throw new Error(
             "Apenas administradores autorizados podem enviar vídeos.",
           );
