@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
+import { uploadPresigned } from "@vercel/blob/client";
 import { apiAssetUrl, apiUrl } from "@/lib/api-config";
 import {
   VideoBlobUpload,
@@ -42,27 +43,16 @@ interface UploadedMaterial {
   materialType: string;
 }
 
-interface DirectUploadSessionResponse {
-  strategy: "DIRECT_MULTIPART";
-  uploadId: string;
-  filename: string;
-  partSize: number;
-  parts: Array<{
-    partNumber: number;
-    signedUrl: string;
-  }>;
-}
-
 async function apiErrorMessage(response: Response, fallback: string) {
   const payload = (await response.json().catch(() => null)) as {
     message?: string | string[];
-    code?: string;
   } | null;
   const message = Array.isArray(payload?.message)
     ? payload.message.join(", ")
     : payload?.message;
   return `${message || fallback} (HTTP ${response.status})`;
 }
+
 interface Lesson {
   id: string;
   title: string;
@@ -142,6 +132,50 @@ const materialAccept = (type: string) =>
     ARCHIVE: ".zip,.rar,.7z",
   })[type] ||
   ".pdf,.doc,.docx,image/*,.xls,.xlsx,.csv,.ppt,.pptx,.zip,.rar,.7z,.txt";
+
+const MAX_COURSE_ASSET_SIZE_BYTES = 500 * 1024 * 1024;
+const COURSE_ASSET_EXTENSIONS = new Set([
+  "pdf",
+  "doc",
+  "docx",
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "gif",
+  "xls",
+  "xlsx",
+  "csv",
+  "ppt",
+  "pptx",
+  "zip",
+  "rar",
+  "7z",
+  "txt",
+]);
+
+function courseAssetName(fileName: string) {
+  const cleaned = fileName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .slice(-180);
+  return `${crypto.randomUUID()}-${cleaned}`;
+}
+
+function materialTypeFromFile(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (extension === "pdf") return "PDF";
+  if (extension === "doc" || extension === "docx") return "WORD";
+  if (["jpg", "jpeg", "png", "webp", "gif"].includes(extension || ""))
+    return "IMAGE";
+  if (["xls", "xlsx", "csv"].includes(extension || ""))
+    return "SPREADSHEET";
+  if (extension === "ppt" || extension === "pptx") return "PRESENTATION";
+  if (["zip", "rar", "7z"].includes(extension || "")) return "ARCHIVE";
+  return "FILE";
+}
 
 interface CourseEditorProps {
   courseId?: string | null;
@@ -446,188 +480,30 @@ export function CourseEditor({
     setUploadProgress(0);
     showToast(`A carregar ${file.name}...`, "success");
     try {
-      const freshToken = async () => {
-        const token = await getToken({ skipCache: true });
-        if (!token) throw new Error("A sua sessão expirou. Entre novamente.");
-        return token;
+      const extension = file.name.split(".").pop()?.toLowerCase();
+      if (!extension || !COURSE_ASSET_EXTENSIONS.has(extension)) {
+        throw new Error("Este formato de material não é permitido.");
+      }
+      if (file.size <= 0 || file.size > MAX_COURSE_ASSET_SIZE_BYTES) {
+        throw new Error("O material precisa ter entre 1 byte e 500 MB.");
+      }
+
+      const pathname = `courses/assets/${courseAssetName(file.name)}`;
+      const blob = await uploadPresigned(pathname, file, {
+        access: "public",
+        handleUploadUrl: "/api/blob/course-assets",
+        contentType: file.type || undefined,
+        multipart: file.size >= 5 * 1024 * 1024,
+        onUploadProgress: ({ percentage }) =>
+          setUploadProgress(Math.round(percentage)),
+      });
+
+      const data: UploadedMaterial = {
+        url: blob.url,
+        originalName: file.name,
+        mimeType: blob.contentType || file.type || "application/octet-stream",
+        materialType: materialTypeFromFile(file),
       };
-
-      const uploadSmallFile = async () => {
-        const form = new FormData();
-        form.append("file", file);
-        const response = await fetch(apiUrl("/api/courses/upload"), {
-          method: "POST",
-          headers: { Authorization: `Bearer ${await freshToken()}` },
-          body: form,
-        });
-        if (!response.ok) {
-          throw new Error(
-            await apiErrorMessage(response, "Erro ao enviar o arquivo"),
-          );
-        }
-        const uploaded = (await response.json()) as UploadedMaterial;
-        setUploadProgress(100);
-        return uploaded;
-      };
-
-      const sessionResponse = await fetch(
-        apiUrl("/api/courses/upload/direct/session"),
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${await freshToken()}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            originalName: file.name,
-            mimeType: file.type || "application/octet-stream",
-            size: file.size,
-          }),
-        },
-      );
-
-      let data: UploadedMaterial;
-      if (!sessionResponse.ok) {
-        const errorPayload = (await sessionResponse.json().catch(() => null)) as {
-          code?: string;
-          message?: string | string[];
-        } | null;
-        if (
-          errorPayload?.code === "OBJECT_STORAGE_NOT_CONFIGURED" &&
-          file.size <= 8 * 1024 * 1024
-        ) {
-          data = await uploadSmallFile();
-        } else if (errorPayload?.code === "OBJECT_STORAGE_NOT_CONFIGURED") {
-          throw new Error(
-            "O envio de vídeos exige um Railway Bucket conectado ao backend. Enquanto isso, use a opção Link com YouTube ou Vimeo.",
-          );
-        } else {
-          const message = Array.isArray(errorPayload?.message)
-            ? errorPayload.message.join(", ")
-            : errorPayload?.message;
-          throw new Error(
-            `${message || "Não foi possível iniciar o upload direto"} (HTTP ${sessionResponse.status})`,
-          );
-        }
-      } else {
-        const session =
-          (await sessionResponse.json()) as DirectUploadSessionResponse;
-        if (
-          session.strategy !== "DIRECT_MULTIPART" ||
-          !session.uploadId ||
-          !session.filename ||
-          !Number.isFinite(session.partSize) ||
-          session.partSize <= 0 ||
-          !Array.isArray(session.parts) ||
-          session.parts.length === 0
-        ) {
-          throw new Error("O servidor não criou uma sessão direta válida.");
-        }
-
-        let uploadFinished = false;
-        try {
-          for (let index = 0; index < session.parts.length; index += 1) {
-            const part = session.parts[index];
-            const start = (part.partNumber - 1) * session.partSize;
-            const body = file.slice(
-              start,
-              Math.min(start + session.partSize, file.size),
-            );
-            let uploaded = false;
-            let lastStatus: number | null = null;
-
-            for (let attempt = 1; attempt <= 3; attempt += 1) {
-              const response = await fetch(part.signedUrl, {
-                method: "PUT",
-                body,
-              }).catch(() => null);
-              lastStatus = response?.status ?? null;
-              if (response?.ok) {
-                uploaded = true;
-                break;
-              }
-              if (attempt < 3) {
-                await new Promise((resolve) =>
-                  setTimeout(resolve, attempt * 800),
-                );
-              }
-            }
-
-            if (!uploaded) {
-              throw new Error(
-                `O Bucket interrompeu a parte ${part.partNumber}${lastStatus ? ` (HTTP ${lastStatus})` : ""}. Verifique o CORS do Bucket Railway.`,
-              );
-            }
-            setUploadProgress(
-              Math.round(((index + 1) / session.parts.length) * 96),
-            );
-          }
-
-          const completionResponse = await fetch(
-            apiUrl("/api/courses/upload/direct/complete"),
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${await freshToken()}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                uploadId: session.uploadId,
-                filename: session.filename,
-                originalName: file.name,
-                mimeType: file.type || "application/octet-stream",
-              }),
-            },
-          );
-          if (!completionResponse.ok) {
-            throw new Error(
-              await apiErrorMessage(
-                completionResponse,
-                "Não foi possível concluir o upload no Bucket",
-              ),
-            );
-          }
-          data = (await completionResponse.json()) as UploadedMaterial;
-          uploadFinished = true;
-          setUploadProgress(100);
-        } finally {
-          if (!uploadFinished) {
-            const token = await getToken({ skipCache: true }).catch(() => null);
-            if (token) {
-              await fetch(apiUrl("/api/courses/upload/direct/abort"), {
-                method: "POST",
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  uploadId: session.uploadId,
-                  filename: session.filename,
-                }),
-              }).catch(() => null);
-            }
-          }
-        }
-      }
-
-      let assetAvailable = false;
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        const verification = await fetch(apiAssetUrl(data.url), {
-          headers: { Range: "bytes=0-0" },
-        }).catch(() => null);
-        if (verification?.ok || verification?.status === 206) {
-          assetAvailable = true;
-          break;
-        }
-        if (attempt < 3) {
-          await new Promise((resolve) => setTimeout(resolve, attempt * 500));
-        }
-      }
-      if (!assetAvailable) {
-        throw new Error(
-          "O arquivo foi recebido, mas não ficou disponível no armazenamento. Verifique o volume ou bucket do Railway.",
-        );
-      }
 
       showToast(`Upload concluído!`, "success");
       return data;
