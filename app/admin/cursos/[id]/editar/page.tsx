@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { apiAssetUrl, apiUrl } from "@/lib/api-config";
-import { inspectVideoFile } from "@/lib/video-file";
+import {
+  VideoBlobUpload,
+  type UploadedBlobVideo,
+} from "@/components/courses/VideoBlobUpload";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -640,42 +643,34 @@ export function CourseEditor({
     }
   };
 
-  const handleVideoUpload = async (
+  const handleVideoUpload = (
     modId: string,
     lessonId: string,
-    file: File | undefined,
+    video: UploadedBlobVideo,
   ) => {
-    if (!file) return;
-    try {
-      const metadata = await inspectVideoFile(file);
-      const upload = await handleFileUpload(file);
-      if (!upload) return;
-      setModules((current) =>
-        current.map((module) =>
-          module.id === modId
-            ? {
-                ...module,
-                lessons: module.lessons.map((lesson) =>
-                  lesson.id === lessonId
-                    ? {
-                        ...lesson,
-                        contentUrl: upload.url,
-                        duration: metadata.durationMinutes,
-                        minimumWatchSeconds: metadata.durationSeconds,
-                      }
-                    : lesson,
-                ),
-              }
-            : module,
-        ),
-      );
-      showToast(`Vídeo válido: ${metadata.durationMinutes} min.`, "success");
-    } catch (error) {
-      showToast(
-        error instanceof Error ? error.message : "Vídeo inválido.",
-        "error",
-      );
-    }
+    setModules((current) =>
+      current.map((module) =>
+        module.id === modId
+          ? {
+              ...module,
+              lessons: module.lessons.map((lesson) =>
+                lesson.id === lessonId
+                  ? {
+                      ...lesson,
+                      contentUrl: video.url,
+                      duration: video.durationMinutes,
+                      minimumWatchSeconds: video.durationSeconds,
+                    }
+                  : lesson,
+              ),
+            }
+          : module,
+      ),
+    );
+    showToast(
+      `Vídeo enviado ao Vercel Blob: ${video.durationMinutes} min.`,
+      "success",
+    );
   };
 
   const handleSave = async () => {
@@ -1219,18 +1214,21 @@ export function CourseEditor({
                                         : "Selecione o vídeo:"}
                                     </span>
                                   </div>
-                                  <input
-                                    type="file"
-                                    accept=".mp4,.webm,.ogg,video/mp4,video/webm,video/ogg"
-                                    onChange={async (e) => {
-                                      await handleVideoUpload(
+                                  <VideoBlobUpload
+                                    disabled={savingStatus === "saving"}
+                                    hasVideo={Boolean(lesson.contentUrl)}
+                                    onUploaded={(video) =>
+                                      handleVideoUpload(
                                         mod.id,
                                         lesson.id,
-                                        e.target.files?.[0],
-                                      );
-                                      e.target.value = "";
-                                    }}
-                                    className="w-full min-w-0 text-xs text-slate-500 file:mr-2 file:cursor-pointer file:rounded-full file:border-0 file:bg-[#F5EFEC] file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-[#641C32] hover:file:bg-[#E9E0E2] sm:w-auto sm:text-sm"
+                                        video,
+                                      )
+                                    }
+                                    onError={(message) =>
+                                      showToast(message, "error")
+                                    }
+                                    onUploadingChange={setIsUploadingFiles}
+                                    onProgressChange={setUploadProgress}
                                   />
                                 </div>
                               ) : lesson.type === "VIDEO" &&
