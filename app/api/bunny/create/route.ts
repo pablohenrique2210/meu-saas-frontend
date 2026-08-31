@@ -47,6 +47,13 @@ function configuration() {
     details.push({ field: "BUNNY_UPLOAD_ALLOWED_ORIGINS", message: "Use apenas https://dominio, sem barra final, caminho /admin/cursos, aspas ou *. Separe várias origens por vírgula." });
   }
   if (details.length || !libraryId || !apiKey) return { ok: false as const, details };
+  // Trust only Vercel's server-side deployment metadata, never request headers.
+  // Each deployment gets a new hostname; other previews remain unauthorized.
+  const deploymentHost = process.env.VERCEL_URL;
+  if (process.env.VERCEL === "1" && deploymentHost &&
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.vercel\.app$/.test(deploymentHost)) {
+    origins.push(`https://${deploymentHost}`);
+  }
   return { ok: true as const, libraryId, apiKey, origins };
 }
 

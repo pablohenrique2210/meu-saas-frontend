@@ -11,7 +11,15 @@ Nenhum arquivo foi transferido ou excluído automaticamente. Não exige migraç�
 2. No projeto frontend da Vercel, configure `BUNNY_LIBRARY_ID`, `BUNNY_API_KEY` e
    `BUNNY_UPLOAD_ALLOWED_ORIGINS`. A última variável contém as origens exatas que
    podem iniciar uploads, separadas por vírgula, sem barra final. Inclua apenas
-   previews confiáveis; não libere todos os domínios Vercel.
+   previews confiáveis; não libere todos os domínios Vercel. O endereço exato do
+   próprio deployment é acrescentado automaticamente quando `VERCEL=1` e
+   `VERCEL_URL` contém um hostname válido da Vercel. Não é necessário cadastrar
+   cada novo endereço de deployment manualmente. Domínios personalizados e
+   aliases de branch continuam exigindo cadastro explícito nessa lista.
+   Mantenha **Automatically expose System Environment Variables** habilitado
+   nas configurações do projeto; não defina `VERCEL_URL` manualmente. Configure
+   as variáveis Bunny nos ambientes usados (Production e/ou Preview) e faça um
+   novo deploy. Cabeçalhos `Host`/`Origin` não determinam quais domínios são confiáveis.
 3. Nenhuma dessas variáveis precisa de prefixo `NEXT_PUBLIC_`. Nunca coloque a
    chave em um componente React, no Git ou em logs. O `.env` existente não foi alterado.
 4. No **backend Railway**, configure `BUNNY_LIBRARY_ID` (mesma biblioteca),

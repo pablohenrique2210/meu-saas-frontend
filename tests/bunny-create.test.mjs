@@ -56,6 +56,66 @@ function request(body = valid, headers = {}) {
   });
 }
 
+const deploymentHost = "sereno-current-team.vercel.app";
+const deploymentOrigin = `https://${deploymentHost}`;
+const vercelEnv = { VERCEL: "1", VERCEL_URL: deploymentHost };
+
+test("accepts the exact current Vercel deployment and explicit configured origins", async () => {
+  const f = fixture({ env: vercelEnv });
+  assert.equal((await f.post(request(valid, { Origin: deploymentOrigin }))).status, 201);
+  assert.equal((await f.post(request())).status, 201);
+  assert.equal(f.calls.length, 2);
+});
+
+test("other deployments and forged routing headers never extend the allowlist", async () => {
+  const f = fixture({ env: vercelEnv });
+  for (const foreign of ["https://sereno-other-team.vercel.app", "https://evil.example",
+    `${deploymentOrigin}.evil.example`, `http://${deploymentHost}`]) {
+    const req = new Request(`${foreign}/api/bunny/create`, {
+      method: "POST", body: JSON.stringify(valid),
+      headers: { Origin: foreign, Host: new URL(foreign).host,
+        "X-Forwarded-Host": new URL(foreign).host, "X-Forwarded-Proto": "https",
+        "Content-Type": "application/json" },
+    });
+    assert.equal((await f.post(req)).status, 403);
+  }
+  assert.equal((await f.post(request(valid, { Origin: "" }))).status, 403);
+  assert.equal(f.calls.length, 0);
+});
+
+test("ignores deployment metadata outside Vercel or with an invalid hostname", async () => {
+  for (const env of [
+    { VERCEL_URL: deploymentHost }, { VERCEL: "0", VERCEL_URL: deploymentHost },
+    ...[undefined, "", deploymentOrigin, `${deploymentHost}/`, `${deploymentHost}:443`,
+      `${deploymentHost}.evil.example`, `user@${deploymentHost}`, "*.vercel.app",
+      `${deploymentHost}?test=1`].map((VERCEL_URL) => ({ VERCEL: "1", VERCEL_URL })),
+  ]) {
+    const f = fixture({ env });
+    assert.equal((await f.post(request(valid, { Origin: deploymentOrigin }))).status, 403);
+    assert.equal(f.calls.length, 0);
+  }
+});
+
+test("the current deployment still requires a verified authorized administrator", async () => {
+  for (const [options, status] of [
+    [{ anonymous: true }, 401], [{ email: "student@example.test" }, 403],
+    [{ verified: false }, 403],
+  ]) {
+    const f = fixture({ ...options, env: vercelEnv });
+    assert.equal((await f.post(request(valid, { Origin: deploymentOrigin }))).status, status);
+    assert.equal(f.calls.length, 0);
+  }
+});
+
+test("deployment metadata does not bypass missing or malformed Bunny configuration", async () => {
+  for (const env of [{ BUNNY_API_KEY: "" }, { BUNNY_UPLOAD_ALLOWED_ORIGINS: "" },
+    { BUNNY_UPLOAD_ALLOWED_ORIGINS: "https://*.vercel.app" }]) {
+    const f = fixture({ env: { ...vercelEnv, ...env } });
+    assert.equal((await f.post(request(valid, { Origin: deploymentOrigin }))).status, 503);
+    assert.equal(f.calls.length, 0);
+  }
+});
+
 for (const email of ["pablohenrique2210@gmail.com", "consultoria@lilianarruda.com.br"]) {
   test(`authorizes verified administrator ${email} without disclosing the key`, async () => {
     const f = fixture({ email });
