@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { API_BASE_URL, apiAssetUrl, apiUrl } from "@/lib/api-config";
 import { LessonQuiz } from "@/components/lessons/LessonQuiz";
+import { lessonMaterialBlobDownloadUrl } from "@/lib/lesson-material-download";
 
 interface Attachment {
   id: string;
@@ -282,15 +283,32 @@ export default function TelaDeAula() {
   };
 
   const downloadMaterial = async (url: string, title: string) => {
-    const filename = uploadedFilename(url);
-    if (!filename) {
-      window.open(url, "_blank", "noopener,noreferrer");
-      return;
-    }
-
     setDownloadingMaterial(url);
     setProgressError("");
     try {
+      const blobDownloadUrl = lessonMaterialBlobDownloadUrl(url);
+      if (blobDownloadUrl) {
+        const link = document.createElement("a");
+        link.href = blobDownloadUrl;
+        link.download = "";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        return;
+      }
+
+      // Preserve existing external resources and authenticated legacy material downloads.
+      const filename = uploadedFilename(url);
+      if (!filename) {
+        const external = new URL(url);
+        if (!["https:", "http:"].includes(external.protocol)) {
+          throw new Error("O endereço deste material é inválido.");
+        }
+        window.open(external.toString(), "_blank", "noopener,noreferrer");
+        return;
+      }
       const token = await getToken({ skipCache: true });
       if (!token) throw new Error("Sessão sem token de acesso.");
       const response = await fetch(
