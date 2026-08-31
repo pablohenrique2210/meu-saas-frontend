@@ -1,7 +1,8 @@
-# Bunny Stream — Fase 2
+# Bunny Stream — editor e reprodução integrados
 
-Esta integração é independente do editor atual. Materiais e vídeos já existentes
-continuam utilizando seus fluxos anteriores. Nenhuma migração Prisma foi aplicada.
+O editor de criação/edição agora envia vídeos diretamente ao Bunny. Materiais e
+capas continuam no Blob. Vídeos antigos permanecem acessíveis até a substituição.
+Nenhum arquivo foi transferido ou excluído automaticamente. Não exige migração Prisma.
 
 ## Configuração
 
@@ -13,8 +14,28 @@ continuam utilizando seus fluxos anteriores. Nenhuma migração Prisma foi aplic
    previews confiáveis; não libere todos os domínios Vercel.
 3. Nenhuma dessas variáveis precisa de prefixo `NEXT_PUBLIC_`. Nunca coloque a
    chave em um componente React, no Git ou em logs. O `.env` existente não foi alterado.
-4. Após publicar o commit e fazer o deploy com as variáveis, acesse
-   `/admin/aulas/upload`. Localmente, use `npm install` e `npm run dev`.
+4. No **backend Railway**, configure `BUNNY_LIBRARY_ID` (mesma biblioteca),
+   `BUNNY_READ_ONLY_API_KEY` (Read-only API Key da biblioteca) e
+   `BUNNY_EMBED_TOKEN_KEY` (chave de Embed View Token Authentication, em Security).
+   O backend aceita `BUNNY_API_KEY` como alternativa à chave somente leitura.
+5. No Bunny, habilite **Embed View Token Authentication** e autorize os domínios
+   da plataforma. A chave de reprodução é diferente da chave usada para upload.
+6. Publique **backend primeiro, frontend depois**, com estas alterações e variáveis.
+   Redeploy de um commit antigo não inclui a integração. Localmente: `npm install`
+   e `npm run dev` no frontend. Nenhum `.env` real foi alterado.
+
+## Substituir um vídeo que ainda aponta para Blob
+
+Abra a aula no editor, escolha **Upload no Bunny**, selecione o arquivo, clique
+**Enviar para o Bunny**, aguarde 100% e **salve o curso**. A transcodificação pode
+continuar depois do envio. Se a duração ainda não estiver disponível, aguarde
+e tente salvar novamente sem reenviar o arquivo.
+
+Já enviou pelo painel Bunny? Escolha **Link (Externo)**, cole apenas o endereço
+Embed completo (`https://iframe.mediadelivery.net/embed/LIBRARY_ID/VIDEO_ID`) e
+salve. Não cole HTML ou API Key. O backend valida e normaliza a referência.
+A tela `/admin/aulas/upload` também fornece uma referência para colar nesse campo.
+Não exclua arquivos Blob até confirmar que nenhuma aula/material depende deles.
 
 A API exige sessão Clerk e e-mail **principal verificado**, limitado a
 `pablohenrique2210@gmail.com` e `consultoria@lilianarruda.com.br`. Se o e-mail
@@ -36,14 +57,19 @@ a sessão e reemitir autorização para o mesmo vídeo. Um novo envio cria outro
 
 ## Limites e próximas fases
 
-- Upload completo não significa transcodificação pronta. O resultado fornece
-  `bunnyVideoId` e `bunnyLibraryId` por `onUploaded`; a tela avisa que ainda não
-  existe vínculo com uma aula. Não salva URL temporária no banco.
-- Integrar esses IDs a uma aula exige autorização no backend, verificação do
-  vídeo junto ao Bunny, persistência Prisma e acompanhamento do processamento
-  por webhook validado ou consulta autenticada. Só então publicar o player HLS.
-- Proteger reprodução de cursos privados exige autorização por matrícula e
-  tokens de reprodução. Upload autenticado, sozinho, não protege o iframe.
+- O editor salva `bunny://LIBRARY_ID/VIDEO_ID` no campo `Lesson.contentUrl`,
+  depois de validar existência/biblioteca/estado pela API Bunny. A duração real
+  tem preferência sobre o valor informado. Não salva URL temporária no banco.
+- `GET /api/courses/lessons/:lessonId/playback` valida matrícula e desbloqueio
+  sequencial com os guards existentes. Retorna URL assinada por duas horas,
+  posição de retomada e `Cache-Control: private, no-store`. Sem configuração,
+  falha com mensagem explícita; não cai silenciosamente em vídeo público.
+- Processamento é consultado a cada 15 s, por até 5 minutos, com nova tentativa
+  manual depois disso. Player.js envia posição, pausa e fim ao progresso existente.
+  Notas, quiz e regras de conclusão permanecem ativos.
+- Assinar o iframe não equivale a DRM. Revise também proteção CDN/HLS e acesso
+  direto aos arquivos no Bunny antes de liberar cursos privados. URLs públicas
+  antigas do Blob permanecem públicas enquanto não forem removidas.
 - O Zod valida metadados declarados (MP4/WebM/MOV, até 5 GB); a assinatura TUS
   do Bunny não vincula tamanho/MIME. Isso não substitui verificar o objeto final.
 - Antes de liberar em escala, adicionar rate limiting distribuído, auditoria,
@@ -54,17 +80,22 @@ a sessão e reemitir autorização para o mesmo vídeo. Um novo envio cria outro
 ## Verificação
 
 ```sh
-node --test tests/bunny-create.test.mjs
+node --test tests/bunny-create.test.mjs tests/bunny-upload.test.mjs
 npx tsc --noEmit --incremental false
 npx eslint app/api/bunny/create/route.ts components/courses/BunnyVideoUpload.tsx app/admin/aulas/upload/page.tsx tests/bunny-create.test.mjs
 npm run build
 ```
 
-Os testes de API usam Clerk e Bunny simulados e não criam vídeos reais.
+Backend: `npm test -- --runInBand bunny-stream.service.spec content-bunny.spec content.service.spec`
+e `npm run build`.
+
+Os testes usam Clerk e Bunny simulados e não criam vídeos reais.
 Para teste integrado, use um pequeno vídeo de teste com conta autorizada;
 confira o processamento no Bunny e, no navegador, que apenas assinatura e IDs
 aparecem no tráfego — jamais `AccessKey`. Exclua o vídeo de teste pelo painel
 quando não for mais necessário.
 
-Referências: https://bunny.net/docs/stream/tus-resumable-uploads e
-https://bunny.net/docs/api-reference/stream/manage-videos/create-video.
+Referências: [TUS](https://bunny.net/docs/stream/tus-resumable-uploads),
+[assinatura](https://bunny.net/docs/stream/token-authentication),
+[Player.js](https://bunny.net/docs/stream/playback-api) e
+[processamento](https://bunny.net/docs/stream/webhooks).

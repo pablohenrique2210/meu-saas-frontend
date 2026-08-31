@@ -1,4 +1,5 @@
 "use client";
+import BunnyLessonPlayer from "@/components/courses/BunnyLessonPlayer";
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
@@ -170,6 +171,7 @@ export default function TelaDeAula() {
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const bunnyTime = useRef(0);
   const lastSavedTime = useRef(0);
   const isSavingProgress = useRef(false);
 
@@ -524,7 +526,7 @@ export default function TelaDeAula() {
     }
     setIsCompleting(true);
     await saveProgressToCloud(
-      videoRef.current ? videoRef.current.currentTime : 0,
+      videoRef.current ? videoRef.current.currentTime : bunnyTime.current,
       true,
       true,
     );
@@ -536,7 +538,7 @@ export default function TelaDeAula() {
     setQuizCompleted(true);
     setIsCompleting(true);
     const completed = await saveProgressToCloud(
-      videoRef.current ? videoRef.current.currentTime : lastSavedTime.current,
+      videoRef.current ? videoRef.current.currentTime : bunnyTime.current || lastSavedTime.current,
       true,
       true,
     );
@@ -709,6 +711,7 @@ export default function TelaDeAula() {
     setProgressError("");
     setIsMobileSidebarOpen(false);
     lastSavedTime.current = 0;
+    bunnyTime.current = 0;
   };
 
   const watchProgressPercent =
@@ -1225,7 +1228,13 @@ export default function TelaDeAula() {
                 >
                   {activeLesson.contentUrl &&
                   activeLesson.contentUrl.trim() !== "" ? (
-                    isNativeVideo(activeLesson.contentUrl) ? (
+                    activeLesson.contentUrl.startsWith("bunny://") ? (
+                      <BunnyLessonPlayer key={`${activeLesson.id}:${activeLesson.contentUrl}`} lessonId={activeLesson.id} title={activeLesson.title}
+                        onTime={(seconds, force) => {
+                          bunnyTime.current = seconds;
+                          void saveProgressToCloud(seconds, force);
+                        }} />
+                    ) : isNativeVideo(activeLesson.contentUrl) ? (
                       <video
                         key={`${activeLesson.id}:${mediaReloadKey}`}
                         ref={videoRef}

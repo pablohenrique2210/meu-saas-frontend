@@ -10,7 +10,7 @@ export default function BunnyUploadPage() {
           <h1 className="text-3xl font-semibold">Upload de vídeo · Bunny Stream</h1>
           <p className="text-stone-600">Envio direto e autorizado, com progresso e tentativas automáticas em caso de instabilidade.</p>
           <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            Integração da Fase 2: esta página valida o envio para a biblioteca. O vínculo com as aulas e o player serão integrados em uma próxima etapa. O editor atual continua funcionando.
+            Para enviar e vincular um vídeo diretamente à aula, use o editor do curso e escolha Upload no Bunny. Esta tela avulsa também permite enviar: depois copie a referência gerada para o campo Link da aula e salve o curso.
           </p>
         </header>
         <BunnyVideoUpload />

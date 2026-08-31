@@ -6,10 +6,7 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { uploadPresigned } from "@vercel/blob/client";
 import { apiAssetUrl, apiUrl } from "@/lib/api-config";
-import {
-  VideoBlobUpload,
-  type UploadedBlobVideo,
-} from "@/components/courses/VideoBlobUpload";
+import BunnyVideoUpload, { type BunnyUploadedVideo } from "@/components/courses/BunnyVideoUpload";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -111,6 +108,7 @@ const categories = [
     label: "Saúde Mental e Clima Organizacional",
   },
   { value: "POSITIVE_PSYCHOLOGY", label: "Psicologia Positiva no Trabalho" },
+  { value: "LEADERSHIP_DEVELOPMENT", label: "Capacitação de Líderes" },
 ];
 const materialTypes = [
   ["FILE", "📄 Outro arquivo"],
@@ -261,7 +259,8 @@ export function CourseEditor({
               minimumWatchSeconds: l.minimumWatchSeconds ?? l.duration * 60,
               videoMode:
                 l.contentUrl?.includes("http") &&
-                !l.contentUrl?.includes("uploads")
+                !l.contentUrl?.includes("uploads") &&
+                !l.contentUrl?.includes(".blob.vercel-storage.com/")
                   ? "LINK"
                   : "UPLOAD",
               contentUrl: l.contentUrl || "",
@@ -522,7 +521,7 @@ export function CourseEditor({
   const handleVideoUpload = (
     modId: string,
     lessonId: string,
-    video: UploadedBlobVideo,
+    video: BunnyUploadedVideo,
   ) => {
     setModules((current) =>
       current.map((module) =>
@@ -544,7 +543,7 @@ export function CourseEditor({
       ),
     );
     showToast(
-      `Vídeo enviado ao Vercel Blob: ${video.durationMinutes} min.`,
+      "Vídeo enviado ao Bunny. Salve o curso para vincular à aula; a reprodução aguarda o processamento.",
       "success",
     );
   };
@@ -791,7 +790,7 @@ export function CourseEditor({
                   </div>
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2">
-                      Categoria da IA
+                      Categoria do Curso
                     </label>
                     <select
                       value={formData.category}
@@ -1025,7 +1024,7 @@ export function CourseEditor({
                                   className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 outline-none"
                                 >
                                   <option value="UPLOAD">
-                                    📁 Upload (MP4)
+                                    📁 Upload no Bunny
                                   </option>
                                   <option value="LINK">
                                     🌐 Link (Externo)
@@ -1078,7 +1077,7 @@ export function CourseEditor({
                             <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 sm:px-4">
                               {lesson.type === "VIDEO" &&
                               lesson.videoMode === "UPLOAD" ? (
-                                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex w-full min-w-0 flex-col gap-3">
                                   <div className="flex items-center gap-2">
                                     <Video
                                       size={18}
@@ -1086,13 +1085,15 @@ export function CourseEditor({
                                     />
                                     <span className="text-sm font-bold text-slate-700">
                                       {lesson.contentUrl
-                                        ? "✅ Vídeo já enviado. Alterar:"
+                                        ? lesson.contentUrl.startsWith("bunny://")
+                                          ? "✅ Vídeo no Bunny. Substituir:"
+                                          : "Vídeo antigo mantido. Envie abaixo para substituir pelo Bunny:"
                                         : "Selecione o vídeo:"}
                                     </span>
                                   </div>
-                                  <VideoBlobUpload
-                                    disabled={savingStatus === "saving"}
-                                    hasVideo={Boolean(lesson.contentUrl)}
+                                  <BunnyVideoUpload
+                                    disabled={savingStatus === "saving" || isUploadingFiles}
+                                    defaultTitle={lesson.title}
                                     onUploaded={(video) =>
                                       handleVideoUpload(
                                         mod.id,
@@ -1100,16 +1101,13 @@ export function CourseEditor({
                                         video,
                                       )
                                     }
-                                    onError={(message) =>
-                                      showToast(message, "error")
-                                    }
                                     onUploadingChange={setIsUploadingFiles}
                                     onProgressChange={setUploadProgress}
                                   />
                                 </div>
                               ) : lesson.type === "VIDEO" &&
                                 lesson.videoMode === "LINK" ? (
-                                <div className="w-full flex items-center gap-2">
+                                <div className="w-full min-w-0 space-y-2">
                                   <LinkIcon
                                     size={16}
                                     className="text-slate-400"
@@ -1125,9 +1123,10 @@ export function CourseEditor({
                                         e.target.value,
                                       )
                                     }
-                                    placeholder="Cole o Link (ex: Youtube)"
+                                    placeholder="Cole o endereço Embed do Bunny (ou link externo)"
                                     className="w-full bg-transparent outline-none text-sm font-medium"
                                   />
+                                  <p className="text-xs text-slate-600">Já enviou pelo painel Bunny? Cole o endereço Embed completo (https://iframe.mediadelivery.net/embed/…) e salve. Não cole a API Key nem o HTML do iframe.</p>
                                 </div>
                               ) : (
                                 <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
