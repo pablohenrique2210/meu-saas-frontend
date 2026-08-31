@@ -119,3 +119,33 @@ test("upstream errors do not disclose response bodies or keys", async () => {
     assert.equal(JSON.stringify(f.logs).includes("fixture-private-key"), false);
   }
 });
+
+test("configuration diagnostics identify every missing field without exposing values", async () => {
+  const f = fixture({ env: { BUNNY_LIBRARY_ID: "", BUNNY_API_KEY: " ", BUNNY_UPLOAD_ALLOWED_ORIGINS: "" } });
+  const response = await f.post(request());
+  const body = await response.json();
+  assert.equal(response.status, 503);
+  assert.equal(body.code, "BUNNY_CONFIG_INVALID");
+  assert.deepEqual(body.details.map((item) => item.field), ["BUNNY_LIBRARY_ID", "BUNNY_API_KEY", "BUNNY_UPLOAD_ALLOWED_ORIGINS"]);
+  assert.equal(f.calls.length, 0);
+});
+
+test("malformed configuration reports field names, never the submitted secrets", async () => {
+  for (const env of [
+    { BUNNY_LIBRARY_ID: "private-value-not-a-number" },
+    { BUNNY_UPLOAD_ALLOWED_ORIGINS: "https://private-value.example/admin/cursos" },
+    { BUNNY_UPLOAD_ALLOWED_ORIGINS: "https://private-value.example/" },
+    { BUNNY_UPLOAD_ALLOWED_ORIGINS: "private-value.example" },
+    { BUNNY_UPLOAD_ALLOWED_ORIGINS: '"https://private-value.example"' },
+  ]) {
+    const f = fixture({ env });
+    const response = await f.post(request());
+    assert.equal(response.status, 503);
+    const body = await response.json();
+    assert.ok(body.details.some((item) => item.field === Object.keys(env)[0]));
+    assert.equal(JSON.stringify(body).includes("private-value"), false);
+    assert.equal(JSON.stringify(body).includes("fixture-private-key"), false);
+    assert.equal(JSON.stringify(f.logs).includes("private-value"), false);
+    assert.equal(f.calls.length, 0);
+  }
+});

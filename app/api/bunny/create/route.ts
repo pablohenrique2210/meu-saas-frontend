@@ -23,17 +23,31 @@ function configuration() {
   const apiKey = process.env.BUNNY_API_KEY?.trim();
   const origins = (process.env.BUNNY_UPLOAD_ALLOWED_ORIGINS ?? "")
     .split(",").map((value) => value.trim()).filter(Boolean);
-  if (!libraryId || !/^[1-9]\d*$/.test(libraryId) || !apiKey || !origins.length) {
-    return null;
+  const details: Array<{ field: string; message: string }> = [];
+  if (!libraryId) {
+    details.push({ field: "BUNNY_LIBRARY_ID", message: "Ausente ou vazia no ambiente deste deployment da Vercel." });
+  } else if (!/^[1-9]\d*$/.test(libraryId)) {
+    details.push({ field: "BUNNY_LIBRARY_ID", message: "Use somente o número positivo da biblioteca, sem aspas, URL ou nome." });
+  }
+  if (!apiKey) {
+    details.push({ field: "BUNNY_API_KEY", message: "Ausente ou vazia na Vercel. Use a API Key de escrita da biblioteca; a Read-only não substitui esta variável." });
+  }
+  if (!origins.length) {
+    details.push({ field: "BUNNY_UPLOAD_ALLOWED_ORIGINS", message: "Ausente ou vazia. Informe as origens autorizadas com https://, separadas por vírgula." });
   }
   try {
     for (const origin of origins) {
       const url = new URL(origin);
       if (origin.includes("*") || url.origin !== origin || (url.protocol !== "https:" &&
-          !(url.protocol === "http:" && url.hostname === "localhost"))) return null;
+          !(url.protocol === "http:" && url.hostname === "localhost"))) {
+        throw new Error("Invalid origin configuration");
+      }
     }
-  } catch { return null; }
-  return { libraryId, apiKey, origins };
+  } catch {
+    details.push({ field: "BUNNY_UPLOAD_ALLOWED_ORIGINS", message: "Use apenas https://dominio, sem barra final, caminho /admin/cursos, aspas ou *. Separe várias origens por vírgula." });
+  }
+  if (details.length || !libraryId || !apiKey) return { ok: false as const, details };
+  return { ok: true as const, libraryId, apiKey, origins };
 }
 
 // Read only bounded JSON metadata. Video bytes never pass through this route.
@@ -65,7 +79,15 @@ export async function POST(request: Request) {
     });
   try {
     const config = configuration();
-    if (!config) return respond({ error: "Upload Bunny ainda não configurado no servidor." }, 503);
+    if (!config.ok) {
+      // Only field names and static hints: never serialize environment values.
+      console.error("Bunny configuration invalid", { requestId, fields: config.details.map((item) => item.field) });
+      return respond({
+        code: "BUNNY_CONFIG_INVALID",
+        error: "Configuração Bunny incompleta ou inválida na Vercel. Corrija as variáveis no ambiente deste deployment e publique novamente.",
+        details: config.details,
+      }, 503);
+    }
     const origin = request.headers.get("origin");
     if (!origin || !config.origins.includes(origin)) {
       return respond({ error: "Origem não autorizada para upload." }, 403);
