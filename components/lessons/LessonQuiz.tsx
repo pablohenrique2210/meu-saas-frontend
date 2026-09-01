@@ -14,7 +14,16 @@ interface QuizOption {
 interface QuizQuestion {
   id: string;
   prompt: string;
+  category?: string;
+  type?: "single" | "multiple" | "boolean";
+  correctOptionCount?: number;
   options: QuizOption[];
+}
+
+interface QuizFeedback {
+  questionId: string;
+  correct: boolean;
+  feedback?: string;
 }
 
 interface LessonQuizDefinition {
@@ -25,6 +34,7 @@ interface LessonQuizDefinition {
     finalScore: number;
     correctAnswers: number;
     totalQuestions: number;
+    questionFeedback?: QuizFeedback[];
   } | null;
 }
 
@@ -54,7 +64,7 @@ export function LessonQuiz({
     null,
   );
   const [questionIndex, setQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [result, setResult] =
     useState<LessonQuizDefinition["completedResult"]>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -97,7 +107,7 @@ export function LessonQuiz({
   }, [getToken, lessonId]);
 
   const question = definition?.questions[questionIndex];
-  const selectedOptionId = question ? answers[question.id] : undefined;
+  const selectedOptionIds = question ? (answers[question.id] ?? []) : [];
 
   const submit = async () => {
     if (!definition) return;
@@ -117,7 +127,7 @@ export function LessonQuiz({
           body: JSON.stringify({
             answers: definition.questions.map((questionItem) => ({
               questionId: questionItem.id,
-              selectedOptionId: answers[questionItem.id],
+              selectedOptionIds: answers[questionItem.id] ?? [],
             })),
           }),
         },
@@ -140,7 +150,7 @@ export function LessonQuiz({
   };
 
   const advance = () => {
-    if (!definition || !question || !selectedOptionId) return;
+    if (!definition || !question || selectedOptionIds.length === 0) return;
     if (questionIndex === definition.questions.length - 1) {
       void submit();
       return;
@@ -196,6 +206,23 @@ export function LessonQuiz({
             <p className="mt-3 font-serif text-4xl">
               {result.correctAnswers} de {result.totalQuestions} corretas
             </p>
+            {result.questionFeedback?.some((item) => item.feedback) && (
+              <div className="mx-auto mt-7 max-w-xl space-y-3 text-left">
+                {result.questionFeedback.map((item, index) =>
+                  item.feedback ? (
+                    <div
+                      key={item.questionId}
+                      className="rounded-2xl border border-current/10 bg-current/5 p-4"
+                    >
+                      <p className="text-xs font-bold uppercase tracking-wider opacity-60">
+                        Pergunta {index + 1} · {item.correct ? "Correta" : "Incorreta"}
+                      </p>
+                      <p className="mt-1 text-sm opacity-80">{item.feedback}</p>
+                    </div>
+                  ) : null,
+                )}
+              </div>
+            )}
             <button
               type="button"
               onClick={() => void onCompleted()}
@@ -230,18 +257,40 @@ export function LessonQuiz({
               <h3 className="mt-7 font-serif text-2xl leading-snug">
                 {question.prompt}
               </h3>
+              {question.category && (
+                <p className="mt-2 text-xs font-bold uppercase tracking-wider text-[#8F3651]">
+                  {question.category}
+                </p>
+              )}
+              {question.type === "multiple" && (
+                <p className="mt-3 text-sm opacity-65">
+                  Selecione todas as alternativas corretas.
+                </p>
+              )}
               <div className="mt-5 grid gap-3">
                 {question.options.map((option) => {
-                  const selected = selectedOptionId === option.id;
+                  const selected = selectedOptionIds.includes(option.id);
                   return (
                     <button
                       key={option.id}
                       type="button"
+                      aria-pressed={selected}
                       onClick={() =>
-                        setAnswers((current) => ({
-                          ...current,
-                          [question.id]: option.id,
-                        }))
+                        setAnswers((current) => {
+                          const currentSelection = current[question.id] ?? [];
+                          const nextSelection =
+                            question.type === "multiple"
+                              ? selected
+                                ? currentSelection.filter(
+                                    (optionId) => optionId !== option.id,
+                                  )
+                                : [...currentSelection, option.id]
+                              : [option.id];
+                          return {
+                            ...current,
+                            [question.id]: nextSelection,
+                          };
+                        })
                       }
                       className={`rounded-2xl border p-4 text-left font-semibold transition ${selected ? "border-[#8F3651] bg-[#F7EEF1] text-[#641C32]" : isNightMode ? "border-white/10 bg-white/5 hover:bg-white/10" : "border-[#E9E0E2] hover:border-[#8F3651] hover:bg-[#FAF7F4]"}`}
                     >
@@ -252,7 +301,7 @@ export function LessonQuiz({
               </div>
               <button
                 type="button"
-                disabled={!selectedOptionId || isSubmitting}
+                disabled={selectedOptionIds.length === 0 || isSubmitting}
                 onClick={advance}
                 className="mt-7 flex w-full items-center justify-center rounded-2xl bg-[#641C32] px-6 py-4 font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 sm:rounded-full"
               >

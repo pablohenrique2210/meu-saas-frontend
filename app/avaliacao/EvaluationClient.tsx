@@ -9,11 +9,13 @@ import {
   DilemmaManagerGame,
   KnowledgeRaceGame,
   RiskInspectionGame,
+  FormAssessmentGame,
   type DilemmaIndicators,
   type DilemmaNode,
   type RaceQuestion,
   type RiskHotspot,
 } from "@/components/minigames";
+import type { AssessmentQuestion } from "@/components/courses/AssessmentBuilder";
 import {
   getModuleGame,
   type GameDiagnosticResult,
@@ -86,6 +88,24 @@ export default function EvaluationClient() {
 
   const renderGame = () => {
     if (!definition) return null;
+
+    const visualConfig = definition.config as unknown as {
+      formatVersion?: number;
+      questions?: AssessmentQuestion[];
+    };
+    if (
+      visualConfig.formatVersion === 2 &&
+      Array.isArray(visualConfig.questions)
+    ) {
+      return (
+        <FormAssessmentGame
+          moduleId={definition.moduleId}
+          gameType={definition.gameType}
+          questions={visualConfig.questions}
+          onSubmitted={handleSubmitted}
+        />
+      );
+    }
 
     if (definition.gameType === "DILEMA") {
       const config = definition.config as unknown as DilemmaConfig;

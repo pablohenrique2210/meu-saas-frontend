@@ -22,7 +22,7 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [scriptReady, setScriptReady] = useState(false);
-  const [iframe, setIframe] = useState<HTMLIFrameElement | null>(null);
+  const [loadedIframe, setLoadedIframe] = useState<HTMLIFrameElement | null>(null);
   const callback = useRef(onTime);
   useEffect(() => { callback.current = onTime; }, [onTime]);
 
@@ -65,10 +65,11 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
 
   useEffect(() => {
     const library = (window as PlayerWindow).playerjs;
-    if (!iframe || !playback || !scriptReady || !library) return;
+    if (!loadedIframe || !playback || !scriptReady || !library ||
+      !loadedIframe.isConnected || !loadedIframe.contentWindow) return;
     let active = true;
     let seconds = playback.lastTime;
-    const player = new library.Player(iframe);
+    const player = new library.Player(loadedIframe);
     const timeout = setTimeout(() => {
       if (active) { setMessage("Não foi possível iniciar esta aula agora."); setFailed(true); }
     }, 30_000);
@@ -93,19 +94,26 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
     });
     return () => {
       active = false; clearTimeout(timeout);
-      for (const event of ["ready", "timeupdate", "pause", "ended", "error"]) player.off(event);
+      // Player.js usa postMessage dentro de off(). Ao trocar de aula, o React
+      // pode remover o iframe antes deste cleanup; nesse caso contentWindow é null.
+      if (loadedIframe.isConnected && loadedIframe.contentWindow) {
+        for (const event of ["ready", "timeupdate", "pause", "ended", "error"]) {
+          try { player.off(event); } catch { /* O iframe já está sendo desmontado. */ }
+        }
+      }
     };
-  }, [iframe, playback, scriptReady]);
+  }, [loadedIframe, playback, scriptReady]);
 
   return <div className="relative h-full w-full bg-black text-white">
-    <Script src="https://assets.mediadelivery.net/playerjs/playerjs-latest.min.js" strategy="afterInteractive"
+    <Script src="https://assets.mediadelivery.net/playerjs/player-0.1.0.min.js" strategy="afterInteractive"
       onReady={() => setScriptReady(true)} onError={() => { setMessage("Não foi possível iniciar esta aula agora."); setFailed(true); }} />
-    {playback && scriptReady && !failed ? <iframe ref={setIframe} src={playback.url} title={title}
+    {playback && scriptReady && !failed ? <iframe key={playback.url} src={playback.url} title={title}
+      onLoad={(event) => setLoadedIframe(event.currentTarget)}
       className="h-full w-full border-0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen /> :
       <div role="status" className="flex h-full flex-col items-center justify-center gap-4 px-5 text-center text-sm">
         <p>{message}</p>
         {failed && <button type="button" className="rounded-full border border-white/40 px-5 py-2"
-          onClick={() => { setPlayback(null); setFailed(false); setMessage("Autorizando reprodução…"); setAttempt((value) => value + 1); }}>Tentar novamente</button>}
+          onClick={() => { setLoadedIframe(null); setPlayback(null); setFailed(false); setMessage("Autorizando reprodução…"); setAttempt((value) => value + 1); }}>Tentar novamente</button>}
       </div>}
   </div>;
 }

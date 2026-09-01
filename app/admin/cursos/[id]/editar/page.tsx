@@ -8,6 +8,12 @@ import { API_BASE_URL, apiAssetUrl, apiUrl } from "@/lib/api-config";
 import { legacyMaterialFilename } from "@/lib/lesson-material-download";
 import { userFacingError } from "@/lib/user-facing-error";
 import BunnyVideoUpload, { type BunnyUploadedVideo } from "@/components/courses/BunnyVideoUpload";
+import {
+  AssessmentBuilder,
+  assessmentDefinitionToJson,
+  parseAssessmentDefinition,
+  validateAssessmentDefinition,
+} from "@/components/courses/AssessmentBuilder";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -636,6 +642,20 @@ export function CourseEditor({
     lessonId: string,
     video: BunnyUploadedVideo,
   ) => {
+    const currentLesson = modules
+      .find((module) => module.id === modId)
+      ?.lessons.find((lesson) => lesson.id === lessonId);
+    const configuredMinimum = Math.max(
+      0,
+      Number(currentLesson?.minimumWatchSeconds) || 0,
+    );
+    const effectiveMinimum =
+      video.durationSeconds > 0
+        ? Math.min(
+            configuredMinimum || video.durationSeconds,
+            video.durationSeconds,
+          )
+        : configuredMinimum;
     const updateVideoState = (linked: {
       contentUrl: string;
       duration: number;
@@ -658,7 +678,7 @@ export function CourseEditor({
     updateVideoState({
       contentUrl: video.url,
       duration: video.durationMinutes,
-      minimumWatchSeconds: video.durationSeconds,
+      minimumWatchSeconds: effectiveMinimum,
     });
 
     if (isCreating || lessonId.startsWith("temp_")) {
@@ -684,6 +704,7 @@ export function CourseEditor({
           body: JSON.stringify({
             contentUrl: video.url,
             durationSeconds: video.durationSeconds,
+            minimumWatchSeconds: effectiveMinimum,
           }),
         },
       );
@@ -714,6 +735,52 @@ export function CourseEditor({
   const handleSave = async () => {
     if (!formData.title)
       return showToast("O curso precisa de um título!", "error");
+
+    try {
+      for (const [moduleIndex, moduleItem] of modules.entries()) {
+        if (moduleItem.gameType && moduleItem.gameConfigText.trim()) {
+          const rawConfig = JSON.parse(moduleItem.gameConfigText) as {
+            formatVersion?: number;
+          };
+          if (rawConfig.formatVersion === 2) {
+            const errors = validateAssessmentDefinition(
+              parseAssessmentDefinition(
+                rawConfig,
+                `Avaliação do módulo ${moduleIndex + 1}`,
+              ),
+            );
+            if (errors.length > 0) {
+              return showToast(
+                `Módulo ${moduleIndex + 1}: ${errors[0]}.`,
+                "error",
+              );
+            }
+          }
+        }
+
+        for (const [lessonIndex, lesson] of moduleItem.lessons.entries()) {
+          if (!lesson.quizConfigText.trim()) continue;
+          const errors = validateAssessmentDefinition(
+            parseAssessmentDefinition(
+              lesson.quizConfigText,
+              `Quiz da aula ${lessonIndex + 1}`,
+            ),
+          );
+          if (errors.length > 0) {
+            return showToast(
+              `Módulo ${moduleIndex + 1}, aula ${lessonIndex + 1}: ${errors[0]}.`,
+              "error",
+            );
+          }
+        }
+      }
+    } catch {
+      return showToast(
+        "Uma avaliação possui dados inválidos. Abra o construtor e revise as perguntas.",
+        "error",
+      );
+    }
+
     setSavingStatus("saving");
 
     try {
@@ -1108,19 +1175,21 @@ export function CourseEditor({
                         </select>
                       </div>
                       {mod.gameType && (
-                        <textarea
-                          required
+                        <div className="mt-4">
+                          <AssessmentBuilder
                           value={mod.gameConfigText}
-                          onChange={(e) =>
+                          onChange={(definition) =>
                             updateModuleGame(
                               mod.id,
                               "gameConfigText",
-                              e.target.value,
+                              assessmentDefinitionToJson(definition),
                             )
                           }
-                          placeholder="Cole aqui a configuração JSON com as perguntas, cenários ou pontos de risco."
-                          className="mt-3 min-h-36 w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-xs outline-none focus:border-[#641C32]"
-                        />
+                          title="Construtor da avaliação do módulo"
+                          description="Crie as perguntas visualmente. O sistema organiza e envia a estrutura correta ao salvar o curso."
+                          showTitle
+                          />
+                        </div>
                       )}
                     </div>
 
@@ -1218,7 +1287,8 @@ export function CourseEditor({
                                     aria-label="Tempo mínimo obrigatório em minutos"
                                     title="Tempo que o colaborador precisa assistir antes de concluir"
                                     type="number"
-                                    min="0"
+                                    min="0.5"
+                                    max={lesson.duration || undefined}
                                     step="0.5"
                                     value={
                                       lesson.minimumWatchSeconds
@@ -1356,37 +1426,20 @@ export function CourseEditor({
                             </div>
                           </div>
 
-                          <div className="rounded-2xl border border-[#E9E0E2] bg-[#FAF7F4] p-4">
-                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                              <div>
-                                <p className="text-xs font-bold uppercase tracking-wider text-[#641C32]">
-                                  Quiz ao final da aula
-                                </p>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  O colaborador responde antes de liberar a
-                                  próxima aula.
-                                </p>
-                              </div>
-                              {lesson.quizConfigText.trim() && (
-                                <span className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-bold text-emerald-700">
-                                  Configurado
-                                </span>
-                              )}
-                            </div>
-                            <textarea
-                              value={lesson.quizConfigText}
-                              onChange={(event) =>
-                                updateLesson(
-                                  mod.id,
-                                  lesson.id,
-                                  "quizConfigText",
-                                  event.target.value,
-                                )
-                              }
-                              placeholder='{"title":"Quiz da aula","questions":[...]}'
-                              className="min-h-32 w-full rounded-xl border border-slate-200 bg-white p-3 font-mono text-xs outline-none focus:border-[#641C32]"
-                            />
-                          </div>
+                          <AssessmentBuilder
+                            value={lesson.quizConfigText}
+                            onChange={(definition) =>
+                              updateLesson(
+                                mod.id,
+                                lesson.id,
+                                "quizConfigText",
+                                assessmentDefinitionToJson(definition),
+                              )
+                            }
+                            title="Quiz ao final da aula"
+                            description="O colaborador responde ao quiz antes de liberar a próxima aula."
+                            showTitle
+                          />
 
                           {/* Materiais Complementares */}
                           <div className="-mx-4 -mb-2 rounded-b-2xl border-t border-slate-100 bg-slate-50/50 px-4 pb-2 pt-4 sm:-mx-5 sm:px-5">
