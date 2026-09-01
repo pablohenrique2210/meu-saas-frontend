@@ -168,7 +168,7 @@ export default function BunnyVideoUpload({ onUploaded, defaultTitle, disabled, o
         <p>Arquivo recebido. O Bunny ainda precisa processar o vídeo antes da reprodução.</p>
         <p>ID do vídeo: <code>{result.bunnyVideoId}</code></p>
         <p>Biblioteca: <code>{result.bunnyLibraryId}</code></p>
-        <p>{onUploaded ? "Agora salve o curso para vincular este vídeo à aula." : "Para vincular a uma aula, copie esta referência para o campo Link no editor:"}</p>
+        <p>{onUploaded ? "O editor está confirmando o vínculo deste vídeo com a aula." : "Para vincular a uma aula, copie esta referência para o campo Link no editor:"}</p>
         {!onUploaded && <code className="block break-all">{result.url}</code>}
       </div>}
     </div>

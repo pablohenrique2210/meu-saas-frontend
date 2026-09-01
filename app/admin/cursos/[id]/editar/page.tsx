@@ -41,6 +41,13 @@ interface UploadedMaterial {
   materialType: string;
 }
 
+interface LinkedLessonVideo {
+  id: string;
+  contentUrl: string;
+  duration: number;
+  minimumWatchSeconds: number;
+}
+
 interface DirectUploadSessionResponse {
   strategy: "DIRECT_MULTIPART";
   uploadId: string;
@@ -624,34 +631,84 @@ export function CourseEditor({
     }
   };
 
-  const handleVideoUpload = (
+  const handleVideoUpload = async (
     modId: string,
     lessonId: string,
     video: BunnyUploadedVideo,
   ) => {
-    setModules((current) =>
-      current.map((module) =>
-        module.id === modId
-          ? {
-              ...module,
-              lessons: module.lessons.map((lesson) =>
-                lesson.id === lessonId
-                  ? {
-                      ...lesson,
-                      contentUrl: video.url,
-                      duration: video.durationMinutes,
-                      minimumWatchSeconds: video.durationSeconds,
-                    }
-                  : lesson,
-              ),
-            }
-          : module,
-      ),
-    );
-    showToast(
-      "Vídeo enviado ao Bunny. Salve o curso para vincular à aula; a reprodução aguarda o processamento.",
-      "success",
-    );
+    const updateVideoState = (linked: {
+      contentUrl: string;
+      duration: number;
+      minimumWatchSeconds: number;
+    }) => {
+      setModules((current) =>
+        current.map((module) =>
+          module.id === modId
+            ? {
+                ...module,
+                lessons: module.lessons.map((lesson) =>
+                  lesson.id === lessonId ? { ...lesson, ...linked } : lesson,
+                ),
+              }
+            : module,
+        ),
+      );
+    };
+
+    updateVideoState({
+      contentUrl: video.url,
+      duration: video.durationMinutes,
+      minimumWatchSeconds: video.durationSeconds,
+    });
+
+    if (isCreating || lessonId.startsWith("temp_")) {
+      showToast(
+        "Vídeo enviado ao Bunny. Salve o curso para criar a aula e concluir o vínculo.",
+        "success",
+      );
+      return;
+    }
+
+    setIsUploadingFiles(true);
+    try {
+      const token = await getToken({ skipCache: true });
+      if (!token) throw new Error("Sessão sem token");
+      const response = await fetch(
+        apiUrl(`/api/courses/lessons/${lessonId}/video`),
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            contentUrl: video.url,
+            durationSeconds: video.durationSeconds,
+          }),
+        },
+      );
+      if (!response.ok) {
+        throw new Error(
+          await apiErrorMessage(response, "Falha ao vincular o vídeo à aula"),
+        );
+      }
+      const linked = (await response.json()) as LinkedLessonVideo;
+      updateVideoState(linked);
+      showToast(
+        "Vídeo enviado e vinculado à aula. A reprodução será liberada ao fim do processamento.",
+        "success",
+      );
+    } catch (error) {
+      showToast(
+        userFacingError(
+          error,
+          "O vídeo chegou ao Bunny, mas o vínculo automático falhou. Salve o curso antes de sair desta tela.",
+        ),
+        "error",
+      );
+    } finally {
+      setIsUploadingFiles(false);
+    }
   };
 
   const handleSave = async () => {
@@ -1194,7 +1251,7 @@ export function CourseEditor({
                                     <span className="text-sm font-bold text-slate-700">
                                       {lesson.contentUrl
                                         ? lesson.contentUrl.startsWith("bunny://")
-                                          ? "✅ Vídeo no Bunny. Substituir:"
+                                          ? "Vídeo vinculado ao Bunny. Substituir:"
                                           : "Vídeo antigo mantido. Envie abaixo para substituir pelo Bunny:"
                                         : "Selecione o vídeo:"}
                                     </span>
@@ -1212,6 +1269,33 @@ export function CourseEditor({
                                     onUploadingChange={setIsUploadingFiles}
                                     onProgressChange={setUploadProgress}
                                   />
+                                  <div className="space-y-2 rounded-xl border border-stone-200 bg-white p-3">
+                                    <label
+                                      htmlFor={`bunny-reference-${lesson.id}`}
+                                      className="block text-xs font-bold text-slate-700"
+                                    >
+                                      Vídeo já enviado ao Bunny
+                                    </label>
+                                    <input
+                                      id={`bunny-reference-${lesson.id}`}
+                                      type="text"
+                                      value={lesson.contentUrl || ""}
+                                      onChange={(event) =>
+                                        updateLesson(
+                                          mod.id,
+                                          lesson.id,
+                                          "contentUrl",
+                                          event.target.value,
+                                        )
+                                      }
+                                      placeholder="Cole o endereço Embed do Bunny"
+                                      className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm outline-none focus:border-[#641C32]"
+                                    />
+                                    <p className="text-xs text-slate-600">
+                                      Para recuperar um upload existente, cole o
+                                      endereço Embed completo e salve o curso.
+                                    </p>
+                                  </div>
                                 </div>
                               ) : lesson.type === "VIDEO" &&
                                 lesson.videoMode === "LINK" ? (
@@ -1245,7 +1329,7 @@ export function CourseEditor({
                                     />
                                     <span className="text-sm font-bold text-slate-700">
                                       {lesson.contentUrl
-                                        ? "✅ Documento enviado. Alterar:"
+                                        ? "Documento enviado. Alterar:"
                                         : "Documento Principal:"}
                                     </span>
                                   </div>

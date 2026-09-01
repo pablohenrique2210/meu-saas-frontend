@@ -334,9 +334,7 @@ function CourseCard({
     : curso.subtitle?.trim() ||
       "Conhecimento aplicado para transformar o cuidado com as pessoas em resultados consistentes.";
   const instructorName = curso.author?.trim() || "Lilian Arruda";
-  const instructorRole = isLeadershipProgram
-    ? "Especialista em Liderança Humanizada"
-    : "Educação e Saúde Corporativa";
+  const instructorRole = getCategoryLabel(curso.category);
   const tags = isLeadershipProgram
     ? ["Bem-estar", "Performance", "Empatia"]
     : [getCategoryLabel(curso.category), "Desenvolvimento"];
