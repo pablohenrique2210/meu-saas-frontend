@@ -85,8 +85,8 @@ export function DilemmaManagerGame({
 
   if (!currentNode) {
     return (
-      <p className="rounded-2xl bg-rose-50 p-5 text-sm font-semibold text-rose-700">
-        O cenário inicial do Dilema do Gestor não foi configurado.
+      <p className="rounded-2xl border border-[#E9E0E2] bg-white p-5 text-sm text-[#776A6E]">
+        Esta atividade está em preparação.
       </p>
     );
   }
@@ -150,6 +150,6 @@ function SubmissionMessage({
   if (status === "submitted")
     return <p className="mt-4 text-sm font-bold text-emerald-700">Resultado enviado ao RH.</p>;
   if (error)
-    return <p className="mt-4 text-sm font-semibold text-rose-700">{error}</p>;
+    return <p className="mt-4 text-sm text-[#776A6E]">{error}</p>;
   return null;
 }

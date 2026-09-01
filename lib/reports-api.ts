@@ -98,6 +98,12 @@ export class ReportsApiError extends Error {
   }
 }
 
+function withCompany(path: string, companyId?: string) {
+  return companyId
+    ? `${path}?companyId=${encodeURIComponent(companyId)}`
+    : path;
+}
+
 function errorMessage(payload: unknown) {
   if (!payload || typeof payload !== "object" || !("message" in payload)) {
     return "Não foi possível gerar o diagnóstico.";
@@ -133,25 +139,41 @@ async function reportRequest<T>(path: string, token: string, signal?: AbortSigna
   return (await response.json()) as T;
 }
 
-export function listReportCourses(token: string, signal?: AbortSignal) {
-  return reportRequest<ReportCourse[]>("/api/reports/courses", token, signal);
+export function listReportCourses(
+  token: string,
+  signal?: AbortSignal,
+  companyId?: string,
+) {
+  return reportRequest<ReportCourse[]>(
+    withCompany("/api/reports/courses", companyId),
+    token,
+    signal,
+  );
 }
 
 export function getCourseReportPreview(
   token: string,
   courseId: string,
   signal?: AbortSignal,
+  companyId?: string,
 ) {
   return reportRequest<CourseReportPreview>(
-    `/api/reports/courses/${encodeURIComponent(courseId)}/preview`,
+    withCompany(
+      `/api/reports/courses/${encodeURIComponent(courseId)}/preview`,
+      companyId,
+    ),
     token,
     signal,
   );
 }
 
-export async function downloadCourseReport(token: string, courseId: string) {
+export async function downloadCourseReport(
+  token: string,
+  courseId: string,
+  companyId?: string,
+) {
   const response = await fetchWithConnectionRetry(
-    `${API_BASE_URL}/api/reports/courses/${encodeURIComponent(courseId)}/pdf`,
+    `${API_BASE_URL}${withCompany(`/api/reports/courses/${encodeURIComponent(courseId)}/pdf`, companyId)}`,
     {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",

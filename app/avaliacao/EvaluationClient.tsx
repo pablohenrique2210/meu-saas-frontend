@@ -19,6 +19,7 @@ import {
   type GameDiagnosticResult,
   type ModuleGameDefinition,
 } from "@/lib/game-results-api";
+import { userFacingError } from "@/lib/user-facing-error";
 
 interface DilemmaConfig {
   initialNodeId: string;
@@ -59,7 +60,13 @@ export default function EvaluationClient() {
         setCompletedResult(game.completedResult);
       } catch (loadError) {
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
-        setError(loadError instanceof Error ? loadError.message : "Não foi possível abrir a avaliação.");
+        console.warn("Evaluation unavailable", loadError);
+        setError(
+          userFacingError(
+            loadError,
+            "Esta experiência ainda não está disponível. Volte ao curso e tente novamente em instantes.",
+          ),
+        );
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
@@ -135,7 +142,7 @@ export default function EvaluationClient() {
 
         {!moduleId && <EmptyState message="Conclua um módulo dentro do curso para liberar sua avaliação." />}
         {isLoading && <EmptyState message="Preparando sua avaliação..." />}
-        {error && <EmptyState message={error} error />}
+        {error && <EmptyState message={error} />}
 
         {definition && !isLoading && !error && (
           <div className="mt-10">
@@ -160,14 +167,14 @@ export default function EvaluationClient() {
   );
 }
 
-function EmptyState({ message, error = false }: { message: string; error?: boolean }) {
+function EmptyState({ message }: { message: string }) {
   return (
-    <section className={`mt-14 rounded-[28px] border bg-white p-10 text-center ${error ? "border-rose-200 text-rose-700" : "border-[#E9E0E2] text-[#776A6E]"}`}>
+    <section className="mt-14 rounded-[28px] border border-[#E9E0E2] bg-white p-10 text-center text-[#776A6E]">
       <p className="font-semibold">{message}</p>
     </section>
   );
 }
 
 function ConfigurationError() {
-  return <EmptyState error message="A configuração desta avaliação está incompleta. Solicite a revisão do curso ao administrador." />;
+  return <EmptyState message="Esta atividade está em preparação." />;
 }

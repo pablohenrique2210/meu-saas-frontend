@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import { BookOpen } from "lucide-react";
 import { API_BASE_URL, apiAssetUrl } from "@/lib/api-config";
 
 // 🚀 1. INTERFACE CORRIGIDA (Separamos Módulos de Aulas)
@@ -50,6 +51,7 @@ const getCategoryGradient = (category: string) => {
     STRESS_BURNOUT: "from-rose-500 to-rose-700",
     MENTAL_HEALTH_CLIMATE: "from-[#641C32] to-[#8F3651]",
     POSITIVE_PSYCHOLOGY: "from-amber-400 to-orange-500",
+    LEADERSHIP_DEVELOPMENT: "from-[#641C32] to-[#241A1D]",
   };
   return gradients[category] || "from-[#641C32] to-[#241A1D]";
 };
@@ -59,6 +61,7 @@ const getCategoryLabel = (category: string) =>
     STRESS_BURNOUT: "Estresse e Burnout",
     MENTAL_HEALTH_CLIMATE: "Saúde Mental",
     POSITIVE_PSYCHOLOGY: "Psicologia Positiva",
+    LEADERSHIP_DEVELOPMENT: "Capacitação de Líderes",
   })[category] ?? category.replace(/_/g, " ");
 
 export default function TrilhasPremium() {
@@ -67,7 +70,6 @@ export default function TrilhasPremium() {
   const [searchQuery, setSearchQuery] = useState("");
   const [trilhas, setTrilhas] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     const fetchCoursesAndProgress = async () => {
@@ -152,10 +154,8 @@ export default function TrilhasPremium() {
         });
 
         setTrilhas(formattedCourses);
-      } catch {
-        setError(
-          "Não foi possível carregar o catálogo. O servidor está ligado?",
-        );
+      } catch (loadError) {
+        console.warn("Course catalog unavailable", loadError);
       } finally {
         setIsLoading(false);
       }
@@ -247,16 +247,6 @@ export default function TrilhasPremium() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 lg:px-12 pt-12 space-y-16">
-        {error && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-600 p-6 rounded-2xl flex items-center gap-4">
-            <span className="text-2xl">⚠️</span>
-            <div>
-              <h3 className="font-bold">Erro de conexão</h3>
-              <p className="text-sm">{error}</p>
-            </div>
-          </div>
-        )}
-
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 lg:gap-8">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -303,7 +293,9 @@ export default function TrilhasPremium() {
                 </div>
               ) : (
                 <div className="py-20 text-center flex flex-col items-center bg-white rounded-3xl border border-[#E9E0E2]">
-                  <span className="text-5xl mb-4 opacity-50">🍃</span>
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#E9E0E2] bg-[#FAF7F4] text-[#641C32]">
+                    <BookOpen size={24} strokeWidth={1.7} aria-hidden="true" />
+                  </div>
                   <h3 className="font-serif text-2xl text-[#241A1D] mb-2">
                     Nenhum curso encontrado
                   </h3>

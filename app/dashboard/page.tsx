@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { Loader2 } from "lucide-react";
+import { BookOpen, Loader2 } from "lucide-react";
 
 // 🚀 IMPORT CORRIGIDO: O "../" faz o código sair da pasta dashboard e encontrar o botão na pasta app!
 import BotaoPerfil from "../BotaoPerfil";
@@ -38,7 +38,6 @@ export default function DashboardColaborador() {
   const { getToken, isSignedIn } = useAuth();
   const [courses, setCourses] = useState<DashboardCourse[]>([]);
   const [progress, setProgress] = useState<DashboardProgress[]>([]);
-  const [connectionError, setConnectionError] = useState("");
   const [isDashboardLoading, setIsDashboardLoading] = useState(true);
 
   useEffect(() => {
@@ -47,7 +46,6 @@ export default function DashboardColaborador() {
 
     void (async () => {
       setIsDashboardLoading(true);
-      setConnectionError("");
       try {
         if (!isSignedIn) throw new Error("Inicie sessão para ver seus cursos.");
         const token = await getToken({ skipCache: true });
@@ -76,11 +74,7 @@ export default function DashboardColaborador() {
         setProgress((await progressResponse.json()) as DashboardProgress[]);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setConnectionError(
-          error instanceof Error
-            ? error.message
-            : "Não foi possível conectar ao backend.",
-        );
+        console.warn("Dashboard data unavailable", error);
       } finally {
         if (!controller.signal.aborted) setIsDashboardLoading(false);
       }
@@ -198,12 +192,6 @@ export default function DashboardColaborador() {
         <Link href="/" className="mb-8 block w-fit lg:hidden">
           <BrandLogo priority className="h-[52px] max-w-[190px]" />
         </Link>
-
-        {connectionError && (
-          <div className="mb-8 bg-rose-50 border border-rose-200 text-rose-600 p-4 rounded-xl flex items-center gap-3">
-            <span>⚠️</span> {connectionError}
-          </div>
-        )}
 
         {isDashboardLoading && (
           <div className="mb-8 flex items-center gap-3 rounded-xl border border-[#E9E0E2] bg-white p-4 text-sm font-semibold text-[#776A6E]">
@@ -331,7 +319,9 @@ export default function DashboardColaborador() {
             </div>
           ) : (
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-[#E9E0E2] flex flex-col items-center justify-center text-center py-12">
-              <div className="text-4xl mb-4 opacity-50">🌱</div>
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-[#E9E0E2] bg-[#FAF7F4] text-[#641C32]">
+                <BookOpen size={22} strokeWidth={1.8} aria-hidden="true" />
+              </div>
               <h4 className="font-serif text-xl text-[#241A1D] mb-2">
                 Tudo em dia!
               </h4>

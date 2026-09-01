@@ -33,13 +33,13 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
     async function load() {
       try {
         const token = await getToken({ skipCache: true });
-        if (!token) throw new Error("Sua sessão expirou. Entre novamente para assistir.");
+        if (!token) throw new Error("Não foi possível iniciar esta aula agora.");
         const response = await fetch(apiUrl(`/api/courses/lessons/${encodeURIComponent(lessonId)}/playback`), {
           headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: controller.signal,
         });
         const body = await response.json().catch(() => null);
         if (controller.signal.aborted) return;
-        if (!response.ok) throw new Error(typeof body?.message === "string" ? body.message : `Não foi possível autorizar o vídeo (HTTP ${response.status}).`);
+        if (!response.ok) throw new Error("Não foi possível iniciar esta aula agora.");
         if (body?.status === "processing") {
           setMessage("O Bunny está preparando o vídeo. A reprodução será liberada quando o processamento terminar.");
           if (++polls < 20) timer = setTimeout(() => void load(), 15_000);
@@ -48,12 +48,13 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
         }
         if (body?.status !== "ready" || typeof body.url !== "string" ||
           !/^https:\/\/iframe\.mediadelivery\.net\/embed\/[1-9]\d*\/[a-f0-9-]{36}\?/.test(body.url)) {
-          throw new Error("A API não retornou uma autorização Bunny válida.");
+          throw new Error("Não foi possível iniciar esta aula agora.");
         }
         setPlayback({ url: body.url, lastTime: Number.isFinite(body.lastTime) ? Math.max(0, body.lastTime) : 0 });
       } catch (error) {
         if (!controller.signal.aborted) {
-          setMessage(error instanceof Error ? error.message : "Não foi possível carregar o vídeo.");
+          console.warn("Video playback unavailable", error);
+          setMessage("Não foi possível iniciar esta aula agora.");
           setFailed(true);
         }
       }
@@ -69,7 +70,7 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
     let seconds = playback.lastTime;
     const player = new library.Player(iframe);
     const timeout = setTimeout(() => {
-      if (active) { setMessage("O player não respondeu. Confira a chave de reprodução e os domínios permitidos no Bunny."); setFailed(true); }
+      if (active) { setMessage("Não foi possível iniciar esta aula agora."); setFailed(true); }
     }, 30_000);
     player.on("ready", () => {
       if (!active) return;
@@ -87,7 +88,7 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
       });
       for (const event of ["pause", "ended"]) player.on(event, () => { if (active) callback.current(seconds, true); });
       player.on("error", () => {
-        if (active) { setMessage("O Bunny não conseguiu reproduzir a aula. Tente novamente para renovar a autorização."); setFailed(true); }
+        if (active) { setMessage("Não foi possível iniciar esta aula agora."); setFailed(true); }
       });
     });
     return () => {
@@ -98,10 +99,10 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
 
   return <div className="relative h-full w-full bg-black text-white">
     <Script src="https://assets.mediadelivery.net/playerjs/playerjs-latest.min.js" strategy="afterInteractive"
-      onReady={() => setScriptReady(true)} onError={() => { setMessage("Não foi possível carregar o controle do player. Verifique sua conexão e recarregue a página."); setFailed(true); }} />
+      onReady={() => setScriptReady(true)} onError={() => { setMessage("Não foi possível iniciar esta aula agora."); setFailed(true); }} />
     {playback && scriptReady && !failed ? <iframe ref={setIframe} src={playback.url} title={title}
       className="h-full w-full border-0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen /> :
-      <div role={failed ? "alert" : "status"} className="flex h-full flex-col items-center justify-center gap-4 px-5 text-center text-sm">
+      <div role="status" className="flex h-full flex-col items-center justify-center gap-4 px-5 text-center text-sm">
         <p>{message}</p>
         {failed && <button type="button" className="rounded-full border border-white/40 px-5 py-2"
           onClick={() => { setPlayback(null); setFailed(false); setMessage("Autorizando reprodução…"); setAttempt((value) => value + 1); }}>Tentar novamente</button>}

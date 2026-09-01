@@ -85,7 +85,6 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<PlatformUserProfile | null>(null);
   const [courses, setCourses] = useState<ProfileCourse[]>([]);
   const [lessonProgress, setLessonProgress] = useState<LessonProgress[]>([]);
-  const [dataError, setDataError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -94,7 +93,6 @@ export default function ProfilePage() {
 
     void (async () => {
       setIsLoading(true);
-      setDataError("");
       try {
         if (!isSignedIn) throw new Error("Inicie sessão para ver o perfil.");
         const token = await getToken({ skipCache: true });
@@ -132,11 +130,7 @@ export default function ProfilePage() {
         );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setDataError(
-          error instanceof Error
-            ? error.message
-            : "Não foi possível carregar os dados do perfil.",
-        );
+        console.warn("Profile learning data unavailable", error);
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
@@ -232,12 +226,6 @@ export default function ProfilePage() {
           <div className="mb-6 flex items-center gap-3 rounded-2xl border border-[#E9E0E2] bg-white px-5 py-4 text-sm font-semibold text-[#776A6E]">
             <Loader2 size={18} className="animate-spin text-[#641C32]" />
             Carregando empresa, cursos e progresso...
-          </div>
-        )}
-
-        {dataError && (
-          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-            {dataError} A área de segurança continua disponível abaixo.
           </div>
         )}
 

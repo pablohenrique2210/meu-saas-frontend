@@ -131,8 +131,8 @@ export function KnowledgeRaceGame({
 
   if (!question) {
     return (
-      <p className="rounded-2xl bg-rose-50 p-5 text-sm font-semibold text-rose-700">
-        Nenhuma pergunta foi configurada para a Corrida do Conhecimento.
+      <p className="rounded-2xl border border-[#E9E0E2] bg-white p-5 text-sm text-[#776A6E]">
+        Esta atividade está em preparação.
       </p>
     );
   }
@@ -221,7 +221,7 @@ export function KnowledgeRaceGame({
         </p>
       )}
       {submissionError && (
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+        <div className="mt-4 flex items-center justify-between gap-3 text-sm text-[#776A6E]">
           <span>{submissionError}</span>
           <button
             type="button"

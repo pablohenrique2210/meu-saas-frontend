@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { inspectVideoFile } from "@/lib/video-file";
 import { DetailedError, Upload } from "tus-js-client";
 import { z } from "zod";
+import { userFacingError } from "@/lib/user-facing-error";
 
 const credentialsSchema = z.object({
   videoId: z.uuid(), libraryId: z.string().regex(/^[1-9]\d*$/),
@@ -133,7 +134,7 @@ export default function BunnyVideoUpload({ onUploaded, defaultTitle, disabled, o
       if (!mounted.current) return;
       setBusy(false);
       onUploadingChange?.(false); onProgressChange?.(null);
-      setError(failure instanceof Error ? failure.message : "Não foi possível iniciar o envio.");
+      setError(userFacingError(failure, "Não foi possível iniciar o envio agora."));
     }
   }
 
@@ -162,7 +163,7 @@ export default function BunnyVideoUpload({ onUploaded, defaultTitle, disabled, o
         <label htmlFor={progressId}>{progress}% enviado{busy && progress === 100 ? " — confirmando recebimento…" : ""}</label>
         <progress id={progressId} max={100} value={progress} className="block h-3 w-full accent-[#681b34]" />
       </div>}
-      {error && <p role="alert" className="break-words rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
+      {error && <p className="break-words text-sm text-stone-600">{error}</p>}
       {result && <div className="space-y-2 break-words rounded-xl bg-green-50 p-4 text-sm text-green-900">
         <p>Arquivo recebido. O Bunny ainda precisa processar o vídeo antes da reprodução.</p>
         <p>ID do vídeo: <code>{result.bunnyVideoId}</code></p>

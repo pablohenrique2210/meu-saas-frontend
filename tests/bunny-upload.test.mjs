@@ -30,6 +30,10 @@ function fixture(failure = false) {
     require(name) {
       if (name === "react") return React;
       if (name === "@/lib/video-file") return { inspectVideoFile: async () => ({ durationSeconds: 121, durationMinutes: 3 }) };
+      if (name === "@/lib/user-facing-error") return {
+        userFacingError: (error, fallback) =>
+          error instanceof Error && error.message ? error.message : fallback,
+      };
       if (name === "tus-js-client") return { DetailedError: class extends Error {}, Upload: class {
         constructor(file, options) { uploads.push({ file, options }); }
         start() {} abort() { return Promise.resolve(); }
@@ -84,7 +88,9 @@ test("authorization failure never falls back to Vercel Blob or Railway upload", 
   assert.equal(f.calls.length, 1);
   assert.equal(f.calls[0].url, "/api/bunny/create");
   assert.deepEqual(f.busy, [true, false]);
-  assert.ok(elements(f.render()).some((node) => node.props?.role === "alert"));
+  const rendered = elements(f.render());
+  assert.equal(rendered.some((node) => node.props?.role === "alert"), false);
+  assert.ok(rendered.some((node) => node.type === "p" && node.props?.children));
 });
 test("terminal TUS failure unlocks save without replacing the existing video", async () => {
   const f = fixture();

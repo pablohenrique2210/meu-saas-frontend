@@ -158,7 +158,7 @@ export function RiskInspectionGame({
       {status === "submitting" && <p className="mt-3 text-sm text-[#776A6E]">Enviando resultado...</p>}
       {status === "submitted" && <p className="mt-3 text-sm font-bold text-emerald-700">Resultado enviado ao RH.</p>}
       {submissionError && (
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+        <div className="mt-3 flex items-center justify-between gap-3 text-sm text-[#776A6E]">
           <span>{submissionError}</span>
           <button type="button" onClick={() => void finish(foundIds, remainingTime === 0 ? "timeout" : "all_found")} className="underline">
             Tentar novamente

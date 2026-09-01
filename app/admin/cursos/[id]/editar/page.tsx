@@ -4,8 +4,9 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { uploadPresigned } from "@vercel/blob/client";
-import { apiAssetUrl, apiUrl } from "@/lib/api-config";
+import { API_BASE_URL, apiAssetUrl, apiUrl } from "@/lib/api-config";
+import { legacyMaterialFilename } from "@/lib/lesson-material-download";
+import { userFacingError } from "@/lib/user-facing-error";
 import BunnyVideoUpload, { type BunnyUploadedVideo } from "@/components/courses/BunnyVideoUpload";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -38,6 +39,14 @@ interface UploadedMaterial {
   originalName: string;
   mimeType: string;
   materialType: string;
+}
+
+interface DirectUploadSessionResponse {
+  strategy: "DIRECT_MULTIPART";
+  uploadId: string;
+  filename: string;
+  partSize: number;
+  parts: Array<{ partNumber: number; signedUrl: string }>;
 }
 
 async function apiErrorMessage(response: Response, fallback: string) {
@@ -102,13 +111,13 @@ const steps = [
   { id: "conteudo", name: "Módulos e Aulas", icon: LayoutGrid },
 ];
 const categories = [
+  { value: "LEADERSHIP_DEVELOPMENT", label: "Capacitação de Líderes" },
   { value: "STRESS_BURNOUT", label: "Gestão do Estresse e Burnout" },
   {
     value: "MENTAL_HEALTH_CLIMATE",
     label: "Saúde Mental e Clima Organizacional",
   },
   { value: "POSITIVE_PSYCHOLOGY", label: "Psicologia Positiva no Trabalho" },
-  { value: "LEADERSHIP_DEVELOPMENT", label: "Capacitação de Líderes" },
 ];
 const materialTypes = [
   ["FILE", "📄 Outro arquivo"],
@@ -152,29 +161,6 @@ const COURSE_ASSET_EXTENSIONS = new Set([
   "txt",
 ]);
 
-function courseAssetName(fileName: string) {
-  const cleaned = fileName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9._-]/g, "-")
-    .replace(/-+/g, "-")
-    .slice(-180);
-  return `${crypto.randomUUID()}-${cleaned}`;
-}
-
-function materialTypeFromFile(file: File) {
-  const extension = file.name.split(".").pop()?.toLowerCase();
-  if (extension === "pdf") return "PDF";
-  if (extension === "doc" || extension === "docx") return "WORD";
-  if (["jpg", "jpeg", "png", "webp", "gif"].includes(extension || ""))
-    return "IMAGE";
-  if (["xls", "xlsx", "csv"].includes(extension || ""))
-    return "SPREADSHEET";
-  if (extension === "ppt" || extension === "pptx") return "PRESENTATION";
-  if (["zip", "rar", "7z"].includes(extension || "")) return "ARCHIVE";
-  return "FILE";
-}
-
 interface CourseEditorProps {
   courseId?: string | null;
   embedded?: boolean;
@@ -214,7 +200,7 @@ export function CourseEditor({
   const [formData, setFormData] = useState({
     title: "",
     description: "",
-    category: "STRESS_BURNOUT",
+    category: "LEADERSHIP_DEVELOPMENT",
     author: "",
     coverUrl: "",
     isPublished: false,
@@ -471,13 +457,20 @@ export function CourseEditor({
       ),
     );
 
-  const handleFileUpload = async (
+  const handleCourseAssetUpload = async (
     file: File | undefined,
+    purpose: "MATERIAL" | "COVER",
   ): Promise<UploadedMaterial | null> => {
     if (!file) return null;
     setIsUploadingFiles(true);
     setUploadProgress(0);
-    showToast(`A carregar ${file.name}...`, "success");
+    showToast(
+      `A enviar ${purpose === "COVER" ? "a capa" : file.name} para o Bunny Storage...`,
+      "success",
+    );
+
+    let session: DirectUploadSessionResponse | null = null;
+    let uploadFinished = false;
     try {
       const extension = file.name.split(".").pop()?.toLowerCase();
       if (!extension || !COURSE_ASSET_EXTENSIONS.has(extension)) {
@@ -487,32 +480,145 @@ export function CourseEditor({
         throw new Error("O material precisa ter entre 1 byte e 500 MB.");
       }
 
-      const pathname = `courses/assets/${courseAssetName(file.name)}`;
-      const blob = await uploadPresigned(pathname, file, {
-        access: "public",
-        handleUploadUrl: "/api/blob/course-assets",
-        contentType: file.type || undefined,
-        multipart: file.size >= 5 * 1024 * 1024,
-        onUploadProgress: ({ percentage }) =>
-          setUploadProgress(Math.round(percentage)),
-      });
-
-      const data: UploadedMaterial = {
-        url: blob.url,
-        originalName: file.name,
-        mimeType: blob.contentType || file.type || "application/octet-stream",
-        materialType: materialTypeFromFile(file),
+      const freshToken = async () => {
+        const token = await getToken({ skipCache: true });
+        if (!token) throw new Error("A sua sessão expirou. Entre novamente.");
+        return token;
       };
 
-      showToast(`Upload concluído!`, "success");
+      const sessionResponse = await fetch(
+        apiUrl("/api/courses/upload/direct/session"),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${await freshToken()}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            originalName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            size: file.size,
+          }),
+        },
+      );
+      if (!sessionResponse.ok) {
+        throw new Error(
+          await apiErrorMessage(
+            sessionResponse,
+            "Não foi possível iniciar o upload no Bunny Storage",
+          ),
+        );
+      }
+
+      session = (await sessionResponse.json()) as DirectUploadSessionResponse;
+      if (
+        session.strategy !== "DIRECT_MULTIPART" ||
+        !session.uploadId ||
+        !session.filename ||
+        !Number.isFinite(session.partSize) ||
+        session.partSize <= 0 ||
+        !Array.isArray(session.parts) ||
+        session.parts.length === 0
+      ) {
+        throw new Error("O servidor não criou uma sessão de upload válida.");
+      }
+
+      for (let index = 0; index < session.parts.length; index += 1) {
+        const part = session.parts[index];
+        const start = (part.partNumber - 1) * session.partSize;
+        const body = file.slice(
+          start,
+          Math.min(start + session.partSize, file.size),
+        );
+        let uploaded = false;
+        let lastStatus: number | null = null;
+
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+          const response = await fetch(part.signedUrl, {
+            method: "PUT",
+            body,
+          }).catch(() => null);
+          lastStatus = response?.status ?? null;
+          if (response?.ok) {
+            uploaded = true;
+            break;
+          }
+          if (attempt < 3) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, attempt * 800),
+            );
+          }
+        }
+
+        if (!uploaded) {
+          throw new Error(
+            `O Bunny interrompeu a parte ${part.partNumber}${lastStatus ? ` (HTTP ${lastStatus})` : ""}.`,
+          );
+        }
+        setUploadProgress(
+          Math.round(((index + 1) / session.parts.length) * 96),
+        );
+      }
+
+      const completionResponse = await fetch(
+        apiUrl("/api/courses/upload/direct/complete"),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${await freshToken()}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            uploadId: session.uploadId,
+            filename: session.filename,
+            originalName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            purpose,
+          }),
+        },
+      );
+      if (!completionResponse.ok) {
+        throw new Error(
+          await apiErrorMessage(
+            completionResponse,
+            "Não foi possível concluir o material no Bunny Storage",
+          ),
+        );
+      }
+
+      const data = (await completionResponse.json()) as UploadedMaterial;
+      uploadFinished = true;
+      setUploadProgress(100);
+      showToast(
+        purpose === "COVER"
+          ? "Capa enviada ao Bunny Storage!"
+          : "Material enviado ao Bunny Storage!",
+        "success",
+      );
       return data;
     } catch (err) {
       showToast(
-        err instanceof Error ? err.message : "Falha no upload.",
+        userFacingError(err, "Não foi possível enviar o material agora."),
         "error",
       );
       return null;
     } finally {
+      if (session && !uploadFinished) {
+        const token = await getToken({ skipCache: true }).catch(() => null);
+        if (token) {
+          await fetch(apiUrl("/api/courses/upload/direct/abort"), {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              uploadId: session.uploadId,
+              filename: session.filename,
+            }),
+          }).catch(() => null);
+        }
+      }
       setIsUploadingFiles(false);
       setUploadProgress(null);
     }
@@ -627,9 +733,10 @@ export function CourseEditor({
     } catch (error) {
       setSavingStatus("error");
       showToast(
-        error instanceof Error
-          ? error.message
-          : "Erro ao gravar as alterações.",
+        userFacingError(
+          error,
+          "Não foi possível gravar as alterações agora.",
+        ),
         "error",
       );
     }
@@ -844,8 +951,9 @@ export function CourseEditor({
                       accept="image/*"
                       className="hidden"
                       onChange={async (e) => {
-                        const upload = await handleFileUpload(
+                        const upload = await handleCourseAssetUpload(
                           e.target.files?.[0],
+                          "COVER",
                         );
                         if (upload)
                           setFormData({ ...formData, coverUrl: upload.url });
@@ -1145,8 +1253,9 @@ export function CourseEditor({
                                     type="file"
                                     accept=".pdf,.doc,.docx,image/*,.xls,.xlsx,.csv,.ppt,.pptx,.txt"
                                     onChange={async (e) => {
-                                      const upload = await handleFileUpload(
+                                      const upload = await handleCourseAssetUpload(
                                         e.target.files?.[0],
+                                        "MATERIAL",
                                       );
                                       if (upload)
                                         updateLesson(
@@ -1248,6 +1357,13 @@ export function CourseEditor({
                                   className="w-full border-[#641C32] px-2 text-xs font-medium outline-none focus:border-b md:w-1/4"
                                 />
                                 <div className="w-full min-w-0 flex-1">
+                                  {legacyMaterialFilename(att.url, API_BASE_URL) && (
+                                    <p className="mb-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900" role="note">
+                                      Material no armazenamento antigo. Se o download apresentar 404,
+                                      selecione o arquivo original abaixo para reenviá-lo ao Bunny Storage
+                                      e depois salve o curso. O link antigo não recupera o arquivo ausente.
+                                    </p>
+                                  )}
                                   {att.type !== "LINK" ? (
                                     <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2">
                                       <Paperclip
@@ -1258,8 +1374,9 @@ export function CourseEditor({
                                         type="file"
                                         accept={materialAccept(att.type)}
                                         onChange={async (e) => {
-                                          const upload = await handleFileUpload(
+                                          const upload = await handleCourseAssetUpload(
                                             e.target.files?.[0],
+                                            "MATERIAL",
                                           );
                                           if (upload)
                                             applyAttachmentUpload(

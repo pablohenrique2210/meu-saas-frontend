@@ -4,6 +4,7 @@ import { uploadPresigned } from "@vercel/blob/client";
 import { Loader2, UploadCloud } from "lucide-react";
 import { useState } from "react";
 import { inspectVideoFile } from "@/lib/video-file";
+import { userFacingError } from "@/lib/user-facing-error";
 
 export interface UploadedBlobVideo {
   url: string;
@@ -93,8 +94,10 @@ export function VideoBlobUpload({
       setProgress(100);
       onProgressChange?.(100);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Falha ao enviar o vídeo.";
+      const message = userFacingError(
+        error,
+        "Não foi possível enviar o vídeo agora.",
+      );
       onError?.(message);
       setProgress(0);
     } finally {

@@ -8,6 +8,7 @@ import {
   type GameMetricValue,
   type ModuleGameType,
 } from "@/lib/game-results-api";
+import { userFacingError } from "@/lib/user-facing-error";
 
 export function useGameResultSubmission(
   moduleId: string,
@@ -64,9 +65,10 @@ export function useGameResultSubmission(
       } catch (error) {
         setStatus("playing");
         setSubmissionError(
-          error instanceof Error
-            ? error.message
-            : "Não foi possível enviar o resultado.",
+          userFacingError(
+            error,
+            "Seu resultado será enviado assim que a sincronização for restabelecida.",
+          ),
         );
         return null;
       } finally {

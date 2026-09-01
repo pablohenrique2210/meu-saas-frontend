@@ -19,6 +19,12 @@ export interface UserProfile {
   isActive: boolean;
 }
 
+export interface ManagedCompany {
+  id: string;
+  name: string;
+  _count: { users: number; employeeInvites: number };
+}
+
 export interface CreateUserInput {
   id: string;
   name: string;
@@ -57,6 +63,7 @@ export interface EmployeeInvitation {
 }
 
 export interface CreateEmployeeInvitationInput {
+  companyId?: string;
   name: string;
   email: string;
   cpf: string;
@@ -91,6 +98,11 @@ export interface DeleteUserResult {
 
 export interface RhAccessResult {
   allowed: boolean;
+}
+
+export interface EmployeeActivationStatus {
+  requiresActivation: boolean;
+  emailVerified: boolean;
 }
 
 export function buildWhatsAppActivationUrl(
@@ -203,8 +215,24 @@ export function updateMyProfile(token: string, data: UpdateProfileInput) {
   });
 }
 
-export function listUsers(token: string, signal?: AbortSignal) {
-  return usersRequest<UserProfile[]>("/api/users", token, { signal });
+function withCompany(path: string, companyId?: string) {
+  if (!companyId) return path;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}companyId=${encodeURIComponent(companyId)}`;
+}
+
+export function listManagedCompanies(token: string, signal?: AbortSignal) {
+  return usersRequest<ManagedCompany[]>("/api/companies", token, { signal });
+}
+
+export function listUsers(
+  token: string,
+  signal?: AbortSignal,
+  companyId?: string,
+) {
+  return usersRequest<UserProfile[]>(withCompany("/api/users", companyId), token, {
+    signal,
+  });
 }
 
 export function createUser(token: string, data: CreateUserInput) {
@@ -220,10 +248,16 @@ export function listEmployeePrograms(token: string, signal?: AbortSignal) {
   });
 }
 
-export function listEmployeeInvitations(token: string, signal?: AbortSignal) {
-  return usersRequest<EmployeeInvitation[]>("/api/users/invitations", token, {
-    signal,
-  });
+export function listEmployeeInvitations(
+  token: string,
+  signal?: AbortSignal,
+  companyId?: string,
+) {
+  return usersRequest<EmployeeInvitation[]>(
+    withCompany("/api/users/invitations", companyId),
+    token,
+    { signal },
+  );
 }
 
 export function createEmployeeInvitation(
@@ -255,6 +289,15 @@ export function claimEmployeeInvitation(token: string, cpf: string) {
   return usersRequest<UserProfile>("/api/users/claim", token, {
     method: "POST",
     body: JSON.stringify({ cpf }),
+  });
+}
+
+export function getEmployeeActivationStatus(
+  token: string,
+  signal?: AbortSignal,
+) {
+  return usersRequest<EmployeeActivationStatus>("/api/users/claim/status", token, {
+    signal,
   });
 }
 

@@ -10,13 +10,19 @@ import {
   type CourseReportPreview,
   type ReportCourse,
 } from "@/lib/reports-api";
+import { userFacingError } from "@/lib/user-facing-error";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  companyId?: string;
 }
 
-export default function ReportGeneratorModal({ isOpen, onClose }: Props) {
+export default function ReportGeneratorModal({
+  isOpen,
+  onClose,
+  companyId,
+}: Props) {
   const { getToken } = useAuth();
   const [courses, setCourses] = useState<ReportCourse[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
@@ -28,57 +34,61 @@ export default function ReportGeneratorModal({ isOpen, onClose }: Props) {
   useEffect(() => {
     if (!isOpen) return;
     const controller = new AbortController();
-    setIsLoading(true);
-    setError(null);
-    void (async () => {
+    const timer = window.setTimeout(() => void (async () => {
+      setIsLoading(true);
+      setError(null);
       try {
         const token = await getToken({ skipCache: true });
         if (!token) throw new Error("A sessão não forneceu um token de acesso.");
-        const availableCourses = await listReportCourses(token, controller.signal);
+        const availableCourses = await listReportCourses(
+          token,
+          controller.signal,
+          companyId,
+        );
         setCourses(availableCourses);
         setSelectedCourseId((current) => current || availableCourses[0]?.id || "");
       } catch (loadError) {
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Não foi possível carregar os cursos.",
-        );
+        setError(userFacingError(loadError, "Os cursos estão temporariamente indisponíveis."));
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
-    })();
-    return () => controller.abort();
-  }, [getToken, isOpen]);
+    })(), 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [companyId, getToken, isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !selectedCourseId) {
-      setPreview(null);
-      return;
-    }
+    if (!isOpen || !selectedCourseId) return;
     const controller = new AbortController();
-    setIsLoading(true);
-    setError(null);
-    void (async () => {
+    const timer = window.setTimeout(() => void (async () => {
+      setIsLoading(true);
+      setError(null);
       try {
         const token = await getToken({ skipCache: true });
         if (!token) throw new Error("A sessão não forneceu um token de acesso.");
         setPreview(
-          await getCourseReportPreview(token, selectedCourseId, controller.signal),
+          await getCourseReportPreview(
+            token,
+            selectedCourseId,
+            controller.signal,
+            companyId,
+          ),
         );
       } catch (loadError) {
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Não foi possível montar o diagnóstico.",
-        );
+        setError(userFacingError(loadError, "O diagnóstico estará disponível em instantes."));
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
-    })();
-    return () => controller.abort();
-  }, [getToken, isOpen, selectedCourseId]);
+    })(), 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [companyId, getToken, isOpen, selectedCourseId]);
 
   const handleDownload = async () => {
     if (!selectedCourseId) return;
@@ -87,7 +97,11 @@ export default function ReportGeneratorModal({ isOpen, onClose }: Props) {
     try {
       const token = await getToken({ skipCache: true });
       if (!token) throw new Error("A sessão não forneceu um token de acesso.");
-      const { blob, filename } = await downloadCourseReport(token, selectedCourseId);
+      const { blob, filename } = await downloadCourseReport(
+        token,
+        selectedCourseId,
+        companyId,
+      );
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -97,11 +111,7 @@ export default function ReportGeneratorModal({ isOpen, onClose }: Props) {
       link.remove();
       URL.revokeObjectURL(url);
     } catch (downloadError) {
-      setError(
-        downloadError instanceof Error
-          ? downloadError.message
-          : "Não foi possível baixar o PDF.",
-      );
+      setError(userFacingError(downloadError, "Não foi possível preparar o PDF agora."));
     } finally {
       setIsDownloading(false);
     }
@@ -169,7 +179,7 @@ export default function ReportGeneratorModal({ isOpen, onClose }: Props) {
               </select>
 
               {error && (
-                <div className="mt-5 rounded-2xl border border-[#F2CDCD] bg-[#FFF4F4] px-4 py-3 text-sm font-medium text-[#A50E0E]">
+                <div className="mt-5 rounded-2xl border border-[#E9E0E2] bg-white px-4 py-3 text-sm text-[#776A6E]">
                   {error}
                 </div>
               )}

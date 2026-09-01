@@ -32,7 +32,8 @@ import {
 } from "lucide-react";
 import { API_BASE_URL, apiAssetUrl, apiUrl } from "@/lib/api-config";
 import { LessonQuiz } from "@/components/lessons/LessonQuiz";
-import { lessonMaterialBlobDownloadUrl } from "@/lib/lesson-material-download";
+import { lessonMaterialBlobDownloadUrl, legacyMaterialFilename, legacyMaterialDownloadError } from "@/lib/lesson-material-download";
+import { userFacingError } from "@/lib/user-facing-error";
 
 interface Attachment {
   id: string;
@@ -41,15 +42,6 @@ interface Attachment {
   url: string;
 }
 
-function uploadedFilename(url: string) {
-  try {
-    const pathname = new URL(url, API_BASE_URL).pathname;
-    const match = pathname.match(/\/(?:uploads|api\/media)\/([^/]+)$/);
-    return match ? decodeURIComponent(match[1]) : null;
-  } catch {
-    return null;
-  }
-}
 interface Lesson {
   id: string;
   title: string;
@@ -203,7 +195,7 @@ export default function TelaDeAula() {
         const content = data.content || localBackup || "";
         setLessonNotes(content);
         setNotesStatus(data.content ? "saved" : "idle");
-      } catch (noteError) {
+      } catch {
         if (controller.signal.aborted) return;
         setLessonNotes(localStorage.getItem(`lesson-notes:${lessonId}`) ?? "");
         setNotesStatus("error");
@@ -300,7 +292,7 @@ export default function TelaDeAula() {
       }
 
       // Preserve existing external resources and authenticated legacy material downloads.
-      const filename = uploadedFilename(url);
+      const filename = legacyMaterialFilename(url, API_BASE_URL);
       if (!filename) {
         const external = new URL(url);
         if (!["https:", "http:"].includes(external.protocol)) {
@@ -317,7 +309,7 @@ export default function TelaDeAula() {
       );
       if (!response.ok) {
         throw new Error(
-          await responseMessage(
+          legacyMaterialDownloadError(response.status) ?? await responseMessage(
             response,
             "Não foi possível baixar o material.",
           ),
@@ -339,9 +331,10 @@ export default function TelaDeAula() {
       URL.revokeObjectURL(blobUrl);
     } catch (downloadError) {
       setProgressError(
-        downloadError instanceof Error
-          ? downloadError.message
-          : "Não foi possível baixar o material.",
+        userFacingError(
+          downloadError,
+          "Este material estará disponível em instantes.",
+        ),
       );
     } finally {
       setDownloadingMaterial(null);
@@ -384,8 +377,9 @@ export default function TelaDeAula() {
           setActiveLesson(courseData.modules[0].lessons[0]);
           setVideoError("");
         }
-      } catch {
-        setError("Não foi possível carregar a aula. Verifica o backend.");
+      } catch (courseError) {
+        console.warn("Lesson unavailable", courseError);
+        setError("unavailable");
       } finally {
         setIsLoading(false);
       }
@@ -442,9 +436,10 @@ export default function TelaDeAula() {
       } catch (progressLoadError) {
         if (cancelled) return;
         setProgressError(
-          progressLoadError instanceof Error
-            ? progressLoadError.message
-            : "Não foi possível carregar o progresso.",
+          userFacingError(
+            progressLoadError,
+            "Seu progresso será sincronizado automaticamente.",
+          ),
         );
       }
     };
@@ -519,9 +514,10 @@ export default function TelaDeAula() {
       return true;
     } catch (progressSaveError) {
       setProgressError(
-        progressSaveError instanceof Error
-          ? progressSaveError.message
-          : "Não foi possível salvar o progresso.",
+        userFacingError(
+          progressSaveError,
+          "Seu progresso será sincronizado automaticamente.",
+        ),
       );
       return false;
     } finally {
@@ -680,15 +676,11 @@ export default function TelaDeAula() {
     })
       .then((response) => {
         if (response.status === 404) {
-          setVideoError(
-            "O arquivo deste vídeo não foi encontrado no armazenamento permanente. Reenvie o vídeo no editor do curso.",
-          );
+          setVideoError("Esta aula está temporariamente indisponível.");
           return;
         }
         if (!response.ok && response.status !== 206) {
-          setVideoError(
-            `O servidor não conseguiu disponibilizar este vídeo (erro ${response.status}).`,
-          );
+          setVideoError("Esta aula está temporariamente indisponível.");
           return;
         }
         setVideoError("");
@@ -700,9 +692,7 @@ export default function TelaDeAula() {
         ) {
           return;
         }
-        setVideoError(
-          "A conexão com o armazenamento do vídeo foi interrompida. Tente novamente.",
-        );
+        setVideoError("Esta aula está temporariamente indisponível.");
       });
     return () => controller.abort();
   }, [activeLesson, mediaReloadKey]);
@@ -765,7 +755,10 @@ export default function TelaDeAula() {
   if (error || !course)
     return (
       <div className="h-screen w-screen bg-[#F5EFEC] flex flex-col items-center justify-center">
-        <p className="text-rose-500 font-bold mb-4">{error}</p>{" "}
+        <PlayCircle size={36} className="mb-4 text-[#8F3651]" />
+        <p className="mb-4 font-serif text-2xl text-[#241A1D]">
+          Conteúdo temporariamente indisponível
+        </p>
         <Link href="/trilhas" className="text-[#641C32] hover:underline">
           Voltar às Trilhas
         </Link>
@@ -1267,9 +1260,7 @@ export default function TelaDeAula() {
                           }
                         }}
                         onError={() =>
-                          setVideoError(
-                            "Não foi possível abrir este vídeo. Reenvie um MP4 com codec H.264 e áudio AAC.",
-                          )
+                          setVideoError("Esta aula está temporariamente indisponível.")
                         }
                         onTimeUpdate={handleTimeUpdate}
                         onEnded={() => {
@@ -1310,7 +1301,7 @@ export default function TelaDeAula() {
                           className="mx-auto mb-4 text-rose-300"
                         />
                         <p className="font-bold">
-                          Vídeo incompatível ou indisponível
+                          Conteúdo temporariamente indisponível
                         </p>
                         <p className="mt-2 text-sm text-white/75">
                           {videoError}
@@ -1373,9 +1364,9 @@ export default function TelaDeAula() {
                       </button>
                     </>
                   ) : (
-                    <div className="bg-rose-50 p-4 rounded-xl border border-rose-100 max-w-md mt-4">
-                      <p className="text-rose-600 font-bold text-sm">
-                        Documento não configurado.
+                    <div className="mt-4 max-w-md rounded-xl border border-[#E9E0E2] bg-white p-4">
+                      <p className="text-sm text-[#776A6E]">
+                        Material complementar em preparação.
                       </p>
                     </div>
                   )}
@@ -1463,7 +1454,7 @@ export default function TelaDeAula() {
                     />
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                       <p
-                        className={`text-[11px] ${notesStatus === "error" ? "font-semibold text-rose-500" : isNightMode ? "text-white/45" : "text-[#776A6E]"}`}
+                        className={`text-[11px] ${isNightMode ? "text-white/45" : "text-[#776A6E]"}`}
                       >
                         {notesStatus === "loading"
                           ? "Carregando suas anotações..."
@@ -1614,7 +1605,7 @@ export default function TelaDeAula() {
               )}
               <div className="min-w-0 flex-1 text-right md:flex-none">
                 {progressError && (
-                  <p className="mb-1 max-w-xs text-xs font-semibold text-rose-600">
+                  <p className="mb-1 max-w-xs text-xs text-[#776A6E]">
                     {progressError}
                   </p>
                 )}

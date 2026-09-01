@@ -11,14 +11,15 @@ import {
   type EmployeeProgram,
   type UserProfile,
   type UserRole,
-  UsersApiError,
 } from "@/lib/users-api";
+import { userFacingError } from "@/lib/user-facing-error";
 
 interface EmployeeManagerModalProps {
   isOpen: boolean;
   employee?: UserProfile | null;
   managerRole: UserRole;
   managerUserId?: string;
+  companyId?: string;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }
@@ -65,6 +66,7 @@ export default function EmployeeManagerModal({
   employee,
   managerRole,
   managerUserId,
+  companyId,
   onClose,
   onSaved,
 }: EmployeeManagerModalProps) {
@@ -112,11 +114,7 @@ export default function EmployeeManagerModal({
       } catch (loadError) {
         if (loadError instanceof DOMException && loadError.name === "AbortError")
           return;
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Não foi possível carregar os programas.",
-        );
+        setError(userFacingError(loadError, "Os programas estão temporariamente indisponíveis."));
       } finally {
         if (!controller.signal.aborted) setIsLoadingPrograms(false);
       }
@@ -161,6 +159,7 @@ export default function EmployeeManagerModal({
         });
       } else {
         await createEmployeeInvitation(token, {
+          companyId,
           name: form.name.trim(),
           email: form.email.trim(),
           cpf: form.cpf,
@@ -176,12 +175,7 @@ export default function EmployeeManagerModal({
       await onSaved();
       onClose();
     } catch (submissionError) {
-      setError(
-        submissionError instanceof UsersApiError ||
-          submissionError instanceof Error
-          ? submissionError.message
-          : "Não foi possível guardar o colaborador.",
-      );
+      setError(userFacingError(submissionError, "Não foi possível guardar o colaborador agora."));
     } finally {
       setIsSaving(false);
     }
@@ -203,11 +197,7 @@ export default function EmployeeManagerModal({
       await onSaved();
       onClose();
     } catch (deletionError) {
-      setError(
-        deletionError instanceof UsersApiError || deletionError instanceof Error
-          ? deletionError.message
-          : "Não foi possível excluir o perfil.",
-      );
+      setError(userFacingError(deletionError, "Não foi possível excluir o perfil agora."));
     } finally {
       setIsDeleting(false);
     }

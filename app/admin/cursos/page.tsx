@@ -27,8 +27,17 @@ interface Course {
   category: string;
   isPublished: boolean;
   createdAt: string;
-  _count: { modules: number };
+  modules?: Array<{ id: string }>;
+  _count?: { modules: number };
 }
+
+const categoryLabel = (category: string) =>
+  ({
+    STRESS_BURNOUT: "Gestão do Estresse e Burnout",
+    MENTAL_HEALTH_CLIMATE: "Saúde Mental e Clima Organizacional",
+    POSITIVE_PSYCHOLOGY: "Psicologia Positiva no Trabalho",
+    LEADERSHIP_DEVELOPMENT: "Capacitação de Líderes",
+  })[category] ?? category.replace(/_/g, " ");
 
 export default function AdminDashboard() {
   const { getToken } = useAuth();
@@ -260,11 +269,13 @@ export default function AdminDashboard() {
                   {course.title}
                 </h3>
                 <p className="text-sm text-slate-500 mb-6 flex-1">
-                  {course.category.replace(/_/g, " ")}
+                  {categoryLabel(course.category)}
                 </p>
                 <div className="flex items-center gap-4 text-xs font-bold text-slate-400 mb-6 pt-6 border-t border-slate-100">
                   <span className="flex items-center gap-1">
-                    <LayoutGrid size={14} /> {course._count?.modules || 0}{" "}
+                    <LayoutGrid size={14} />{
+                      course.modules?.length ?? course._count?.modules ?? 0
+                    }{" "}
                     Módulos
                   </span>
                   <span className="flex items-center gap-1">

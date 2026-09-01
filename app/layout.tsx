@@ -5,6 +5,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { ptBR } from "@clerk/localizations/pt-BR";
 import { GlobalAccountAccess } from "./AccountButton";
 import { lilianClerkAppearance } from "./clerkAppearance";
+import EmployeeActivationBoundary from "@/components/EmployeeActivationBoundary";
 
 const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope" });
 const playfair = Playfair_Display({
@@ -32,7 +33,7 @@ export default function RootLayout({
         <body
           className={`${manrope.variable} ${playfair.variable} relative bg-[#FAF7F4] font-sans antialiased`}
         >
-          {children}
+          <EmployeeActivationBoundary>{children}</EmployeeActivationBoundary>
           <GlobalAccountAccess />
         </body>
       </html>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { CheckCircle2, Loader2, X } from "lucide-react";
 import { apiUrl } from "@/lib/api-config";
+import { userFacingError } from "@/lib/user-facing-error";
 
 interface QuizOption {
   id: string;
@@ -87,11 +88,7 @@ export function LessonQuiz({
           loadError.name === "AbortError"
         )
           return;
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Não foi possível abrir o quiz.",
-        );
+        setError(userFacingError(loadError, "Esta atividade estará disponível em instantes."));
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
       }
@@ -136,11 +133,7 @@ export function LessonQuiz({
         >,
       );
     } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Não foi possível enviar o quiz.",
-      );
+      setError(userFacingError(submitError, "Suas respostas serão enviadas em instantes."));
     } finally {
       setIsSubmitting(false);
     }
@@ -189,7 +182,7 @@ export function LessonQuiz({
           </div>
         )}
         {error && (
-          <p className="mt-6 rounded-2xl bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+          <p className="mt-6 rounded-2xl border border-current/10 bg-current/5 p-4 text-sm opacity-70">
             {error}
           </p>
         )}

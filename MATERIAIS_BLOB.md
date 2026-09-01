@@ -1,37 +1,51 @@
-# Materiais das aulas — Vercel Blob
+# Capas e materiais das aulas — Bunny Storage
 
-- Materiais anexos e Documento Principal: upload já existente em `/api/blob/course-assets`,
-  com arquivos em `courses/assets/`, no Blob público conectado ao frontend Vercel.
-- Botões de download da aula usam a URL Blob com `download=1`, que solicita
-  `Content-Disposition: attachment`. O navegador gerencia o download; não carrega
-  até 500 MB em memória JavaScript nem retransmite o arquivo pelo Railway.
-- O nome do arquivo baixado é definido pelo Blob a partir do nome armazenado.
-- Vídeos continuam no Bunny. O player, a autorização Bunny, capas e uploads não
-  foram modificados por esta correção.
-- Recursos externos e materiais antigos em `/uploads` ou `/api/media` mantêm
-  seus fluxos anteriores. Para transferir um material antigo ao Blob, reenvie-o
-  no editor como material da aula e salve o curso. Nada é migrado ou excluído automaticamente.
+O nome deste arquivo foi mantido para preservar links internos antigos. O fluxo
+atual não envia novos materiais ou capas ao Vercel Blob.
+
+- Vídeos usam Bunny Stream.
+- Capas, PDFs, Word, planilhas, apresentações, imagens e compactados usam uma
+  Bunny Storage Zone com compatibilidade S3.
+- O Railway autentica o administrador e gera URLs S3 temporárias. O navegador
+  envia cada parte diretamente ao Bunny; os bytes não passam pela Vercel nem
+  pelo Railway.
+- Capas são servidas publicamente pela rota de mídia do backend.
+- Materiais ficam protegidos. O backend valida o acesso à aula e redireciona o
+  download para uma URL S3 de curta duração.
+- URLs antigas do Vercel Blob continuam baixáveis enquanto os respectivos blobs
+  existirem. Nada antigo é excluído ou migrado automaticamente.
+
+## Recuperar um material antigo que retorna 404
+
+Um registro `/api/media/NOME.pdf` sem o arquivo original não permite recuperar
+os bytes. No editor do curso, abra **Módulos e Aulas**, selecione novamente o
+arquivo original em Documento Principal ou Materiais Complementares e salve o
+curso. A nova referência passará a usar o download protegido do Bunny Storage.
 
 ## Configuração
 
-Não é necessária uma nova chave para baixar arquivos do Blob **público**. Mantenha
-o Blob conectado ao projeto frontend e as variáveis do upload que já funciona.
-Não copie chaves do Blob para `NEXT_PUBLIC_*` nem para o navegador.
+As credenciais da Storage Zone ficam somente no backend Railway:
 
-A tela requer acesso à aula, mas um Blob público pode ser baixado por qualquer
-pessoa que tenha sua URL. Esta alteração não torna documentos confidenciais privados.
-Blob privado exige outro fluxo, com verificação de acesso e entrega autorizada;
-a função não tenta transformar URLs privadas em públicas.
+```dotenv
+BUNNY_STORAGE_ZONE_NAME=<nome-da-zone>
+BUNNY_STORAGE_PASSWORD=<storage-zone-password>
+BUNNY_STORAGE_REGION=ny
+BUNNY_STORAGE_S3_ENDPOINT=https://ny-s3.storage.bunnycdn.com
+BUNNY_STORAGE_PREFIX=course-assets
+S3_URL_STYLE=path
+```
 
-## Teste após publicar o frontend
+Não copie a senha da Storage Zone para a Vercel, para uma variável
+`NEXT_PUBLIC_*` ou para o navegador. A chave da biblioteca Bunny Stream também
+não substitui a senha da Storage Zone.
 
-1. Envie um PDF em Materiais Complementares, salve o curso e abra a aula como aluno.
-2. Clique em Baixar arquivo: o navegador deve iniciar o download do PDF pelo domínio
-   `public.blob.vercel-storage.com`, com `download=1`, sem chamada de download ao Railway.
-3. Confira também Documento Principal e os materiais já enviados ao Blob.
-4. Abra o vídeo e confirme que continua usando o player Bunny.
+## Teste após publicar
 
-Testes locais: `node --test tests/lesson-material-download.test.mjs` e `npm run build`.
-O teste automatizado não transfere arquivos reais nem consome armazenamento.
+1. Envie uma capa e confirme sua exibição no catálogo.
+2. Envie um PDF como Documento Principal e outro como material complementar.
+3. Salve o curso e abra a aula com uma conta de aluno autorizada.
+4. Baixe os dois documentos e confirme que uma conta sem acesso recebe 403/404.
+5. Abra o vídeo e confirme que continua usando o player Bunny Stream.
 
-[Contrato oficial downloadUrl do Vercel Blob](https://vercel.com/docs/vercel-blob/using-blob-sdk).
+Testes locais: `node --test tests/lesson-material-download.test.mjs`,
+`npx tsc --noEmit` e `npm run build`.

@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import BrandLogo from "../BrandLogo";
 import {
   claimEmployeeInvitation,
+  getEmployeeActivationStatus,
   getMyProfile,
   UsersApiError,
 } from "@/lib/users-api";
+import { userFacingError } from "@/lib/user-facing-error";
 
 function formatCpf(value: string) {
   return value
@@ -24,7 +26,7 @@ function ActivationGate() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const [accountState, setAccountState] = useState<
-    "checking" | "active" | "unprovisioned" | "error"
+    "checking" | "active" | "activation-required" | "unauthorized" | "error"
   >("checking");
   const [checkAttempt, setCheckAttempt] = useState(0);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -37,6 +39,14 @@ function ActivationGate() {
       try {
         const token = await getToken({ skipCache: true });
         if (!token) throw new Error("Sessão sem token.");
+        const activation = await getEmployeeActivationStatus(
+          token,
+          controller.signal,
+        );
+        if (activation.requiresActivation) {
+          setAccountState("activation-required");
+          return;
+        }
         await getMyProfile(token, controller.signal);
         setAccountState("active");
       } catch (error) {
@@ -45,7 +55,7 @@ function ActivationGate() {
           error instanceof UsersApiError &&
           (error.status === 403 || error.status === 404)
         ) {
-          setAccountState("unprovisioned");
+          setAccountState("unauthorized");
           return;
         }
         setAccountState("error");
@@ -60,7 +70,30 @@ function ActivationGate() {
     return <p className="text-sm text-[#776A6E]">A verificar sua conta...</p>;
   }
 
-  if (accountState === "unprovisioned") return <ActivationForm />;
+  if (accountState === "activation-required") return <ActivationForm />;
+
+  if (accountState === "unauthorized") {
+    return (
+      <div className="w-full max-w-md rounded-[30px] border border-[#E9E0E2] bg-white p-8 text-center shadow-[0_24px_70px_rgba(36,26,29,0.08)]">
+        <h1 className="font-serif text-3xl text-[#241A1D]">Convite indisponível</h1>
+        <p className="mt-3 text-sm leading-relaxed text-[#776A6E]">
+          Não existe um convite pendente para esta conta. O convite pode ter sido
+          cancelado, expirado ou enviado para outro e-mail. Solicite um novo convite ao RH.
+        </p>
+        <button
+          type="button"
+          disabled={isSigningOut}
+          onClick={async () => {
+            setIsSigningOut(true);
+            await signOut({ redirectUrl: "/" });
+          }}
+          className="mt-6 w-full rounded-full bg-[#641C32] px-6 py-3.5 text-sm font-semibold text-white disabled:opacity-60"
+        >
+          {isSigningOut ? "A sair..." : "Sair desta conta"}
+        </button>
+      </div>
+    );
+  }
 
   if (accountState === "error") {
     return (
@@ -134,12 +167,7 @@ function ActivationForm() {
       router.replace("/dashboard");
       router.refresh();
     } catch (submissionError) {
-      setError(
-        submissionError instanceof UsersApiError ||
-          submissionError instanceof Error
-          ? submissionError.message
-          : "Não foi possível ativar o acesso.",
-      );
+      setError(userFacingError(submissionError, "Não foi possível ativar o acesso agora."));
     } finally {
       setIsSubmitting(false);
     }
@@ -176,7 +204,7 @@ function ActivationForm() {
         </label>
 
         {error && (
-          <div className="rounded-xl border border-[#FAD2CF] bg-[#FCE8E6]/50 px-4 py-3 text-sm font-semibold text-[#A50E0E]">
+          <div className="rounded-xl border border-[#E9E0E2] bg-[#FAF7F4] px-4 py-3 text-sm text-[#776A6E]">
             {error}
           </div>
         )}

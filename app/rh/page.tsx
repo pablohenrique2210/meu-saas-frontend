@@ -13,6 +13,8 @@ import {
   FileBarChart,
   GraduationCap,
   RefreshCw,
+  Search,
+  SlidersHorizontal,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -26,9 +28,11 @@ import {
   getEmployeeInvitationLink,
   getUser,
   listEmployeeInvitations,
+  listManagedCompanies,
   listUsers,
   revokeEmployeeInvitation,
   type EmployeeInvitation,
+  type ManagedCompany,
   type UserProfile,
   UsersApiError,
 } from "@/lib/users-api";
@@ -37,6 +41,7 @@ import {
   listReportCourses,
   type CourseReportPreview,
 } from "@/lib/reports-api";
+import { userFacingError } from "@/lib/user-facing-error";
 
 interface EmployeeLearningSummary {
   courses: Array<{
@@ -68,6 +73,10 @@ function formatLastActivity(value: string | null) {
   }).format(new Date(value));
 }
 
+function neutralCompanyName(name: string) {
+  return /^workspace de\s+/i.test(name.trim()) ? "Empresa principal" : name;
+}
+
 export default function DashboardRH() {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -75,9 +84,12 @@ export default function DashboardRH() {
   const [employees, setEmployees] = useState<UserProfile[]>([]);
   const [invitations, setInvitations] = useState<EmployeeInvitation[]>([]);
   const [courseReports, setCourseReports] = useState<CourseReportPreview[]>([]);
+  const [companies, setCompanies] = useState<ManagedCompany[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [employeeQuery, setEmployeeQuery] = useState("");
   const [isUsersLoading, setIsUsersLoading] = useState(true);
   const [usersError, setUsersError] = useState<string | null>(null);
-  const [learningError, setLearningError] = useState<string | null>(null);
+  const [, setLearningError] = useState<string | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<UserProfile | null>(
     null,
   );
@@ -125,17 +137,52 @@ export default function DashboardRH() {
           currentProfile.role === "ADMIN" ||
           currentProfile.role === "HR_MANAGER"
         ) {
-          const [companyUsers, companyInvitations, reportCourses] = await Promise.all([
-            listUsers(token, signal),
-            listEmployeeInvitations(token, signal),
-            listReportCourses(token, signal),
-          ]);
+          let availableCompanies: ManagedCompany[];
+          try {
+            availableCompanies = await listManagedCompanies(token, signal);
+          } catch (companyError) {
+            if (
+              !(companyError instanceof UsersApiError) ||
+              companyError.status !== 404
+            ) {
+              throw companyError;
+            }
+            // Mantém a prévia compatível enquanto o backend novo ainda não foi
+            // publicado; após o deploy, a lista multiempresa passa a ser usada.
+            availableCompanies = [
+              {
+                id: currentProfile.company.id,
+                name: currentProfile.company.name,
+                _count: { users: 0, employeeInvites: 0 },
+              },
+            ];
+          }
+          availableCompanies = availableCompanies.map((company) => ({
+            ...company,
+            name: neutralCompanyName(company.name),
+          }));
+          setCompanies(availableCompanies);
+          const companyId =
+            selectedCompanyId ||
+            availableCompanies.find(
+              (company) => company.id === currentProfile.companyId,
+            )?.id ||
+            availableCompanies[0]?.id ||
+            currentProfile.companyId;
+          if (companyId !== selectedCompanyId) setSelectedCompanyId(companyId);
+
+          const [companyUsers, companyInvitations, reportCourses] =
+            await Promise.all([
+              listUsers(token, signal, companyId),
+              listEmployeeInvitations(token, signal, companyId),
+              listReportCourses(token, signal, companyId),
+            ]);
           setEmployees(companyUsers);
           setInvitations(companyInvitations);
           try {
             const reports = await Promise.all(
               reportCourses.map((course) =>
-                getCourseReportPreview(token, course.id, signal),
+                getCourseReportPreview(token, course.id, signal, companyId),
               ),
             );
             setCourseReports(reports);
@@ -157,16 +204,18 @@ export default function DashboardRH() {
         if (error instanceof DOMException && error.name === "AbortError")
           return;
 
+        console.warn("People management data unavailable", error);
         setUsersError(
-          error instanceof UsersApiError || error instanceof Error
-            ? error.message
-            : "Não foi possível carregar os colaboradores.",
+          userFacingError(
+            error,
+            "Os dados desta empresa estão temporariamente indisponíveis.",
+          ),
         );
       } finally {
         if (!signal?.aborted) setIsUsersLoading(false);
       }
     },
-    [getToken, isLoaded, isSignedIn],
+    [getToken, isLoaded, isSignedIn, selectedCompanyId],
   );
 
   useEffect(() => {
@@ -181,6 +230,17 @@ export default function DashboardRH() {
     };
   }, [loadUsers]);
 
+  useEffect(() => {
+    if (!isSignedIn) return;
+    const refresh = () => void loadUsers();
+    const interval = window.setInterval(refresh, 30_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [isSignedIn, loadUsers]);
+
   const handleViewEmployee = async (employee: UserProfile) => {
     setOpeningEmployeeId(employee.id);
     setUsersError(null);
@@ -190,11 +250,7 @@ export default function DashboardRH() {
       if (!token) throw new Error("A sessão não forneceu um token de acesso.");
       setSelectedEmployee(await getUser(token, employee.id));
     } catch (error) {
-      setUsersError(
-        error instanceof UsersApiError || error instanceof Error
-          ? error.message
-          : "Não foi possível carregar este perfil.",
-      );
+      setUsersError(userFacingError(error, "Não foi possível abrir este perfil agora."));
     } finally {
       setOpeningEmployeeId(null);
     }
@@ -211,13 +267,16 @@ export default function DashboardRH() {
       const token = await getToken({ skipCache: true });
       if (!token) throw new Error("A sessão não forneceu um token de acesso.");
       await revokeEmployeeInvitation(token, inviteId);
+      setInvitations((current) =>
+        current.map((invitation) =>
+          invitation.id === inviteId
+            ? { ...invitation, status: "REVOKED" }
+            : invitation,
+        ),
+      );
       await loadUsers();
     } catch (error) {
-      setUsersError(
-        error instanceof UsersApiError || error instanceof Error
-          ? error.message
-          : "Não foi possível cancelar o convite.",
-      );
+      setUsersError(userFacingError(error, "Não foi possível cancelar o convite agora."));
     }
   };
 
@@ -232,11 +291,7 @@ export default function DashboardRH() {
       setCopiedInvitationId(inviteId);
       window.setTimeout(() => setCopiedInvitationId(null), 3000);
     } catch (error) {
-      setUsersError(
-        error instanceof UsersApiError || error instanceof Error
-          ? error.message
-          : "Não foi possível copiar o link do convite.",
-      );
+      setUsersError(userFacingError(error, "Não foi possível copiar o link agora."));
     } finally {
       setCopyingInvitationId(null);
     }
@@ -266,11 +321,7 @@ export default function DashboardRH() {
       );
     } catch (error) {
       whatsappWindow?.close();
-      setUsersError(
-        error instanceof UsersApiError || error instanceof Error
-          ? error.message
-          : "Não foi possível abrir o WhatsApp.",
-      );
+      setUsersError(userFacingError(error, "Não foi possível abrir o WhatsApp agora."));
     } finally {
       setSharingInvitationId(null);
     }
@@ -282,6 +333,23 @@ export default function DashboardRH() {
 
   const displayName = profile?.name || "Utilizador";
   const displayInitials = getInitials(displayName);
+  const selectedCompany =
+    companies.find((company) => company.id === selectedCompanyId) ??
+    companies.find((company) => company.id === profile?.companyId) ??
+    null;
+  const normalizedEmployeeQuery = employeeQuery.trim().toLocaleLowerCase("pt-BR");
+  const filteredEmployees = normalizedEmployeeQuery
+    ? employees.filter((employee) =>
+        [
+          employee.name,
+          employee.email,
+          employee.position,
+          employee.department,
+        ].some((value) =>
+          value?.toLocaleLowerCase("pt-BR").includes(normalizedEmployeeQuery),
+        ),
+      )
+    : employees;
   const activeEmployees = employees.filter(
     (employee) => employee.isActive,
   ).length;
@@ -328,7 +396,9 @@ export default function DashboardRH() {
     return summaries;
   }, [courseReports]);
   const companyName =
-    profile?.company.name ?? courseReports[0]?.company.name ?? "Empresa vinculada";
+    selectedCompany?.name ??
+    courseReports[0]?.company.name ??
+    "Empresa selecionada";
   const companyCompletedLessons = Array.from(learningByEmployee.values()).reduce(
     (total, summary) => total + summary.completedLessons,
     0,
@@ -412,7 +482,7 @@ export default function DashboardRH() {
             <Link href="/" className="mr-1 lg:hidden">
               <BrandLogo compact className="h-9" />
             </Link>
-            <span className="hidden sm:inline">Workspace</span>
+            <span className="hidden sm:inline">Administração</span>
             <svg
               className="hidden sm:block"
               width="14"
@@ -425,7 +495,7 @@ export default function DashboardRH() {
               <path d="m9 18 6-6-6-6" />
             </svg>
             <span className="hidden text-[#241A1D] bg-white px-3 py-1.5 rounded-lg border border-[#E9E0E2] shadow-sm sm:inline-flex">
-              Inteligência Estratégica
+              Gestão de pessoas
             </span>
           </div>
 
@@ -461,13 +531,13 @@ export default function DashboardRH() {
               <div className="mb-6 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
                 <div>
                   <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[#E9E0E2] bg-white px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#8F3651] shadow-sm">
-                    <Building2 size={14} /> {companyName}
+                    <Building2 size={14} /> Visão por empresa
                   </div>
                   <h1 className="font-serif text-4xl text-[#241A1D] md:text-5xl">
                     Gestão de pessoas
                   </h1>
                   <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[#776A6E] sm:text-base">
-                    Pessoas, cursos e evolução da empresa em uma visão operacional para o RH.
+                    Consulte pessoas, cursos e evolução sem misturar dados entre empresas.
                   </p>
                 </div>
                 <div className="rounded-2xl bg-[#241A1D] px-4 py-3 text-white shadow-lg sm:min-w-48">
@@ -486,6 +556,58 @@ export default function DashboardRH() {
                       style={{ width: `${companyAverageProgress}%` }}
                     />
                   </div>
+                </div>
+              </div>
+
+              <div className="mb-6 grid gap-3 rounded-[22px] border border-[#E9E0E2] bg-white p-4 shadow-[0_8px_30px_rgba(36,26,29,0.03)] md:grid-cols-[1fr_1.2fr]">
+                <label className="block">
+                  <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#776A6E]">
+                    <Building2 size={14} /> Empresa analisada
+                  </span>
+                  <select
+                    value={selectedCompanyId}
+                    onChange={(event) => {
+                      setSelectedEmployee(null);
+                      setEmployeeQuery("");
+                      setSelectedCompanyId(event.target.value);
+                    }}
+                    disabled={isUsersLoading || companies.length <= 1}
+                    className="w-full rounded-xl border border-[#E9E0E2] bg-[#FAF7F4] px-4 py-3 text-sm font-semibold text-[#241A1D] outline-none transition focus:border-[#641C32] disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {companies.map((company) => (
+                      <option key={company.id} value={company.id}>
+                        {company.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#776A6E]">
+                    <Search size={14} /> Filtrar colaborador
+                  </span>
+                  <div className="relative">
+                    <Search
+                      size={16}
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#8A7D81]"
+                    />
+                    <input
+                      value={employeeQuery}
+                      onChange={(event) => setEmployeeQuery(event.target.value)}
+                      placeholder="Nome, e-mail, cargo ou departamento"
+                      className="w-full rounded-xl border border-[#E9E0E2] bg-[#FAF7F4] py-3 pl-11 pr-4 text-sm text-[#241A1D] outline-none transition placeholder:text-[#A99EA1] focus:border-[#641C32]"
+                    />
+                  </div>
+                </label>
+                <div className="md:col-span-2 flex flex-wrap items-center gap-2 text-xs text-[#776A6E]">
+                  <SlidersHorizontal size={14} className="text-[#8F3651]" />
+                  <span>
+                    Exibindo dados de <strong className="text-[#241A1D]">{companyName}</strong>
+                  </span>
+                  {normalizedEmployeeQuery && (
+                    <span>
+                      • {filteredEmployees.length} de {employees.length} colaboradores encontrados
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -535,11 +657,6 @@ export default function DashboardRH() {
                   </div>
                 ))}
               </div>
-              {learningError && (
-                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
-                  {learningError}
-                </p>
-              )}
             </motion.section>
 
             {/* ==========================================
@@ -553,7 +670,7 @@ export default function DashboardRH() {
                   </h2>
                   {/* Documentação: Mostra o total de colaboradores que vieram do Backend */}
                   <span className="bg-[#F5EFEC] border border-[#E9E0E2] text-[#641C32] px-3 py-1 rounded-full text-xs font-bold shadow-sm">
-                    {employees.length}
+                    {filteredEmployees.length}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3">
@@ -687,8 +804,8 @@ export default function DashboardRH() {
                   ))}
                 </div>
               ) : usersError ? (
-                <div className="rounded-[24px] border border-[#F2CDCD] bg-white p-10 text-center">
-                  <p className="mb-3 text-sm font-semibold text-[#A50E0E]">
+                <div className="rounded-[24px] border border-[#E9E0E2] bg-white p-10 text-center">
+                  <p className="mb-3 text-sm font-medium text-[#776A6E]">
                     {usersError}
                   </p>
                   <button
@@ -703,9 +820,9 @@ export default function DashboardRH() {
                 <div className="rounded-[24px] border border-[#E9E0E2] bg-white p-10 text-center text-sm text-[#776A6E]">
                   O seu perfil não possui permissão para gerir colaboradores.
                 </div>
-              ) : employees.length > 0 ? (
+              ) : filteredEmployees.length > 0 ? (
                 <div className="grid gap-4 lg:grid-cols-2">
-                  {employees.map((emp) => {
+                  {filteredEmployees.map((emp) => {
                     const learning = learningByEmployee.get(emp.id) ?? {
                       courses: [],
                       completedLessons: 0,
@@ -746,7 +863,9 @@ export default function DashboardRH() {
                           <div className="grid grid-cols-2 gap-3 text-xs">
                             <div className="rounded-xl bg-[#FAF7F4] p-3">
                               <p className="text-[9px] font-bold uppercase tracking-wider text-[#8A7D81]">Empresa</p>
-                              <p className="mt-1 truncate font-semibold text-[#241A1D]">{emp.company.name}</p>
+                              <p className="mt-1 truncate font-semibold text-[#241A1D]">
+                                {neutralCompanyName(emp.company.name)}
+                              </p>
                             </div>
                             <div className="rounded-xl bg-[#FAF7F4] p-3">
                               <p className="text-[9px] font-bold uppercase tracking-wider text-[#8A7D81]">Cargo / Área</p>
@@ -828,8 +947,16 @@ export default function DashboardRH() {
               ) : (
                 <div className="rounded-[24px] border border-dashed border-[#D9C9CD] bg-white p-10 text-center">
                   <Users size={28} className="mx-auto mb-3 text-[#8F3651]" />
-                  <p className="font-semibold text-[#241A1D]">Ainda não existem colaboradores registados nesta empresa.</p>
-                  <p className="mt-2 text-sm text-[#776A6E]">Crie um convite para começar a acompanhar a jornada da equipe.</p>
+                  <p className="font-semibold text-[#241A1D]">
+                    {normalizedEmployeeQuery
+                      ? "Nenhum colaborador corresponde ao filtro."
+                      : "Ainda não existem colaboradores registados nesta empresa."}
+                  </p>
+                  <p className="mt-2 text-sm text-[#776A6E]">
+                    {normalizedEmployeeQuery
+                      ? "Tente pesquisar por outro nome, e-mail, cargo ou departamento."
+                      : "Crie um convite para começar a acompanhar a jornada da equipe."}
+                  </p>
                 </div>
               )}
             </motion.div>
@@ -842,6 +969,7 @@ export default function DashboardRH() {
           employee={selectedEmployee}
           managerRole={profile?.role ?? "USER"}
           managerUserId={profile?.id}
+          companyId={selectedCompanyId || profile?.companyId}
           onClose={() => setSelectedEmployee(null)}
           onSaved={handleEmployeeSaved}
         />
@@ -855,6 +983,7 @@ export default function DashboardRH() {
           isOpen={isCreateEmployeeOpen}
           managerRole={profile?.role ?? "USER"}
           managerUserId={profile?.id}
+          companyId={selectedCompanyId || profile?.companyId}
           onClose={() => setIsCreateEmployeeOpen(false)}
           onSaved={handleEmployeeSaved}
         />
@@ -862,6 +991,7 @@ export default function DashboardRH() {
         <ReportGeneratorModal
           isOpen={isReportGeneratorOpen}
           onClose={() => setIsReportGeneratorOpen(false)}
+          companyId={selectedCompanyId || profile?.companyId}
         />
 
         <ProfileModal
