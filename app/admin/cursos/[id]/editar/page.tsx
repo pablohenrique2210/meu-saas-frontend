@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
@@ -136,6 +136,45 @@ function toDateTimeLocal(value?: string | null) {
   const offset = date.getTimezoneOffset() * 60_000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
+
+interface CourseFormData {
+  title: string;
+  description: string;
+  category: string;
+  author: string;
+  coverUrl: string;
+  isPublished: boolean;
+  availableAt: string;
+}
+
+function contentFingerprint(formData: CourseFormData, modules: Module[]) {
+  return JSON.stringify({
+    title: formData.title,
+    description: formData.description,
+    category: formData.category,
+    author: formData.author,
+    coverUrl: formData.coverUrl,
+    isPublished: formData.isPublished,
+    modules: modules.map((moduleItem) => ({
+      id: moduleItem.id,
+      title: moduleItem.title,
+      gameType: moduleItem.gameType,
+      gameConfigText: moduleItem.gameConfigText,
+      lessons: moduleItem.lessons.map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        type: lesson.type,
+        duration: lesson.duration,
+        minimumWatchSeconds: lesson.minimumWatchSeconds,
+        videoMode: lesson.videoMode,
+        contentUrl: lesson.contentUrl,
+        published: lesson.published,
+        quizConfigText: lesson.quizConfigText,
+        attachments: lesson.attachments,
+      })),
+    })),
+  });
+}
 const categories = [
   { value: "LEADERSHIP_DEVELOPMENT", label: "Capacitação de Líderes" },
   { value: "STRESS_BURNOUT", label: "Gestão do Estresse e Burnout" },
@@ -223,7 +262,7 @@ export function CourseEditor({
     setTimeout(() => setToast((prev) => ({ ...prev, show: false })), 4000);
   };
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CourseFormData>({
     title: "",
     description: "",
     category: "LEADERSHIP_DEVELOPMENT",
@@ -233,6 +272,7 @@ export function CourseEditor({
     availableAt: "",
   });
   const [modules, setModules] = useState<Module[]>([]);
+  const initialContentFingerprint = useRef<string | null>(null);
 
   useEffect(() => {
     if (!courseId) return;
@@ -247,7 +287,7 @@ export function CourseEditor({
         if (!res.ok) throw new Error("Curso não encontrado");
         const data = (await res.json()) as CourseApiResponse;
 
-        setFormData({
+        const loadedFormData: CourseFormData = {
           title: data.title,
           description: data.description || "",
           category: data.category,
@@ -255,10 +295,11 @@ export function CourseEditor({
           coverUrl: data.coverUrl || "",
           isPublished: data.isPublished,
           availableAt: toDateTimeLocal(data.availableAt),
-        });
+        };
 
+        let loadedModules: Module[] = [];
         if (data.modules) {
-          const loadedModules: Module[] = data.modules.map((m) => ({
+          loadedModules = data.modules.map((m) => ({
             id: m.id,
             title: m.title,
             availableAt: toDateTimeLocal(m.availableAt),
@@ -294,8 +335,13 @@ export function CourseEditor({
                 : [],
             })),
           }));
-          setModules(loadedModules);
         }
+        setFormData(loadedFormData);
+        setModules(loadedModules);
+        initialContentFingerprint.current = contentFingerprint(
+          loadedFormData,
+          loadedModules,
+        );
       } catch {
         showToast("Erro ao carregar o curso.", "error");
       } finally {
@@ -809,6 +855,52 @@ export function CourseEditor({
     try {
       const token = await getToken({ skipCache: true });
       if (!token) throw new Error("Sessão sem token");
+      const schedulePayload = {
+        availableAt: formData.availableAt
+          ? new Date(formData.availableAt).toISOString()
+          : null,
+        modules: modules.map((moduleItem) => ({
+          id: moduleItem.id,
+          availableAt: moduleItem.availableAt
+            ? new Date(moduleItem.availableAt).toISOString()
+            : null,
+          lessons: moduleItem.lessons.map((lesson) => ({
+            id: lesson.id,
+            availableAt: lesson.availableAt
+              ? new Date(lesson.availableAt).toISOString()
+              : null,
+          })),
+        })),
+      };
+      const currentContentFingerprint = contentFingerprint(formData, modules);
+      if (
+        !isCreating &&
+        initialContentFingerprint.current === currentContentFingerprint
+      ) {
+        const scheduleResponse = await fetch(
+          apiUrl(`/api/courses/${courseId}/schedule`),
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(schedulePayload),
+          },
+        );
+        if (!scheduleResponse.ok) {
+          throw new Error(
+            await apiErrorMessage(
+              scheduleResponse,
+              "Falha ao salvar a programação",
+            ),
+          );
+        }
+        setSavingStatus("saved");
+        showToast("Programação atualizada com sucesso!", "success");
+        setTimeout(() => setSavingStatus("idle"), 3000);
+        return;
+      }
       const payload = {
         title: formData.title,
         description: formData.description,
@@ -877,6 +969,7 @@ export function CourseEditor({
       }
 
       setSavingStatus("saved");
+      initialContentFingerprint.current = currentContentFingerprint;
       showToast(
         isCreating
           ? "Curso criado com sucesso!"
