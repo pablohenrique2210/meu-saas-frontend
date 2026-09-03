@@ -69,7 +69,7 @@ async function apiErrorMessage(response: Response, fallback: string) {
   const message = Array.isArray(payload?.message)
     ? payload.message.join(", ")
     : payload?.message;
-  return `${message || fallback} (HTTP ${response.status})`;
+  return message || fallback;
 }
 
 interface Lesson {
