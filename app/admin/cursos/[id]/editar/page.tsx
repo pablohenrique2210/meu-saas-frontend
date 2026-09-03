@@ -75,6 +75,7 @@ async function apiErrorMessage(response: Response, fallback: string) {
 interface Lesson {
   id: string;
   title: string;
+  availableAt: string;
   type: string;
   duration: number;
   minimumWatchSeconds: number;
@@ -95,6 +96,7 @@ interface Module {
 
 interface CourseApiResponse {
   title: string;
+  availableAt?: string | null;
   description?: string | null;
   category: string;
   author?: string | null;
@@ -109,6 +111,7 @@ interface CourseApiResponse {
     lessons: Array<{
       id: string;
       title: string;
+      availableAt?: string | null;
       type: string;
       duration: number;
       minimumWatchSeconds?: number | null;
@@ -227,6 +230,7 @@ export function CourseEditor({
     author: "",
     coverUrl: "",
     isPublished: false,
+    availableAt: "",
   });
   const [modules, setModules] = useState<Module[]>([]);
 
@@ -250,6 +254,7 @@ export function CourseEditor({
           author: data.author || "",
           coverUrl: data.coverUrl || "",
           isPublished: data.isPublished,
+          availableAt: toDateTimeLocal(data.availableAt),
         });
 
         if (data.modules) {
@@ -264,6 +269,7 @@ export function CourseEditor({
             lessons: m.lessons.map((l) => ({
               id: l.id,
               title: l.title,
+              availableAt: toDateTimeLocal(l.availableAt),
               type: l.type,
               duration: l.duration,
               minimumWatchSeconds: l.minimumWatchSeconds ?? l.duration * 60,
@@ -340,6 +346,7 @@ export function CourseEditor({
                 {
                   id: `temp_les_${Date.now()}`,
                   title: "",
+                  availableAt: "",
                   type: "VIDEO",
                   videoMode: "UPLOAD",
                   duration: 0,
@@ -809,6 +816,9 @@ export function CourseEditor({
         author: formData.author,
         coverUrl: formData.coverUrl,
         isPublished: formData.isPublished,
+        availableAt: formData.availableAt
+          ? new Date(formData.availableAt).toISOString()
+          : null,
         modules: modules.map((m) => ({
           ...(!isCreating && { id: m.id }),
           title: m.title,
@@ -820,6 +830,9 @@ export function CourseEditor({
           lessons: m.lessons.map((l) => ({
             ...(!isCreating && { id: l.id }),
             title: l.title,
+            availableAt: l.availableAt
+              ? new Date(l.availableAt).toISOString()
+              : null,
             type: l.type,
             duration: Number(l.duration),
             minimumWatchSeconds:
@@ -1070,6 +1083,25 @@ export function CourseEditor({
                     className="w-full bg-[#FAF7F4] border border-slate-200 rounded-2xl py-3 px-5 outline-none focus:border-[#641C32] resize-none"
                   />
                 </div>
+                <div className="rounded-2xl border border-[#E9E0E2] bg-[#FAF7F4] p-5">
+                  <label className="block text-sm font-bold text-slate-700 mb-2">
+                    Liberação do curso para colaboradores
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={formData.availableAt}
+                    onChange={(event) =>
+                      setFormData({
+                        ...formData,
+                        availableAt: event.target.value,
+                      })
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-[#641C32] sm:max-w-md"
+                  />
+                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                    Deixe vazio para disponibilizar o curso imediatamente. Administradores e gestores de RH mantêm acesso antecipado.
+                  </p>
+                </div>
               </motion.div>
             )}
 
@@ -1261,6 +1293,25 @@ export function CourseEditor({
                           </div>
 
                           <div className="flex flex-col gap-4">
+                            <label className="flex flex-col gap-2 rounded-xl border border-[#E9E0E2] bg-[#FAF7F4] p-3 text-xs font-bold uppercase tracking-wider text-slate-500 sm:max-w-md">
+                              Liberação desta aula
+                              <input
+                                type="datetime-local"
+                                value={lesson.availableAt}
+                                onChange={(event) =>
+                                  updateLesson(
+                                    mod.id,
+                                    lesson.id,
+                                    "availableAt",
+                                    event.target.value,
+                                  )
+                                }
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-[#641C32]"
+                              />
+                              <span className="font-normal normal-case tracking-normal text-slate-500">
+                                Vazio significa imediatamente, respeitando as datas do curso e do módulo.
+                              </span>
+                            </label>
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
                               <select
                                 value={lesson.type}

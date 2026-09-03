@@ -46,6 +46,7 @@ interface Attachment {
 interface Lesson {
   id: string;
   title: string;
+  availableAt: string | null;
   type: string;
   duration: number;
   minimumWatchSeconds: number;
@@ -66,6 +67,7 @@ interface Module {
 interface Course {
   id: string;
   title: string;
+  availableAt: string | null;
   description: string;
   coverUrl: string;
   modules: Module[];
@@ -118,9 +120,36 @@ function effectiveMinimumWatchSeconds(lesson: Lesson) {
   return Math.max(0, (Number(lesson.duration) || 0) * 60);
 }
 
-function isModuleAvailable(module: Module, now = Date.now()) {
-  if (!module.availableAt) return true;
-  return new Date(module.availableAt).getTime() <= now;
+function effectiveAvailability(
+  course: Pick<Course, "availableAt">,
+  module?: Pick<Module, "availableAt"> | null,
+  lesson?: Pick<Lesson, "availableAt"> | null,
+) {
+  const dates = [course.availableAt, module?.availableAt, lesson?.availableAt]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => new Date(value).getTime())
+    .filter(Number.isFinite);
+  return dates.length > 0 ? Math.max(...dates) : null;
+}
+
+function isModuleAvailable(course: Course, module: Module, now = Date.now()) {
+  const availableAt = effectiveAvailability(course, module);
+  return availableAt === null || availableAt <= now;
+}
+
+function isCourseAvailable(course: Course, now = Date.now()) {
+  const availableAt = effectiveAvailability(course);
+  return availableAt === null || availableAt <= now;
+}
+
+function isLessonAvailable(
+  course: Course,
+  module: Module,
+  lesson: Lesson,
+  now = Date.now(),
+) {
+  const availableAt = effectiveAvailability(course, module, lesson);
+  return availableAt === null || availableAt <= now;
 }
 
 function formatModuleAvailability(value: string) {
@@ -401,16 +430,23 @@ export default function TelaDeAula() {
           courseData.modules?.length > 0 &&
           courseData.modules[0].lessons?.length > 0
         ) {
-          const firstAvailableModule = courseData.modules.find(
-            (courseModule) =>
-              (profile.role === "ADMIN" ||
-                profile.role === "HR_MANAGER" ||
-                isModuleAvailable(courseModule)) &&
-              courseModule.lessons.length > 0,
+          const hasAdministrativeAccess =
+            profile.role === "ADMIN" || profile.role === "HR_MANAGER";
+          const firstAvailableModule = courseData.modules.find((courseModule) =>
+            courseModule.lessons.some(
+              (lesson) =>
+                hasAdministrativeAccess ||
+                isLessonAvailable(courseData, courseModule, lesson),
+            ),
           );
-          if (firstAvailableModule) {
+          const firstAvailableLesson = firstAvailableModule?.lessons.find(
+            (lesson) =>
+              hasAdministrativeAccess ||
+              isLessonAvailable(courseData, firstAvailableModule, lesson),
+          );
+          if (firstAvailableModule && firstAvailableLesson) {
             setActiveModule(firstAvailableModule);
-            setActiveLesson(firstAvailableModule.lessons[0]);
+            setActiveLesson(firstAvailableLesson);
             setVideoError("");
           } else {
             setActiveModule(null);
@@ -649,7 +685,15 @@ export default function TelaDeAula() {
     const scheduledModule = course?.modules.find((courseModule) =>
       courseModule.lessons.some((lesson) => lesson.id === lessonId),
     );
-    if (scheduledModule && !isModuleAvailable(scheduledModule)) return false;
+    const scheduledLesson = scheduledModule?.lessons.find(
+      (lesson) => lesson.id === lessonId,
+    );
+    if (
+      scheduledModule &&
+      scheduledLesson &&
+      !isLessonAvailable(course!, scheduledModule, scheduledLesson)
+    )
+      return false;
 
     // A primeira aula está sempre destrancada!
     if (index === 0) return true;
@@ -940,6 +984,11 @@ export default function TelaDeAula() {
                 >
                   {course.title}
                 </h2>
+                {!isCourseAvailable(course) && course.availableAt && (
+                  <p className="mt-2 text-[10px] font-semibold text-[#8F3651]">
+                    Curso programado para {formatModuleAvailability(course.availableAt)}
+                  </p>
+                )}
                 <div className="mt-4 flex items-center gap-3">
                   <div
                     className={`h-1.5 flex-1 overflow-hidden rounded-full ${isNightMode ? "bg-white/10" : "bg-[#E9E0E2]"}`}
@@ -965,7 +1014,7 @@ export default function TelaDeAula() {
                     >
                       Módulo {moduleIndex + 1}: {modulo.title}
                     </h3>
-                    {!isModuleAvailable(modulo) && modulo.availableAt && (
+                    {!isModuleAvailable(course, modulo) && modulo.availableAt && (
                       <p className="mb-2 px-2 text-[10px] font-semibold text-[#8F3651]">
                         Liberação em {formatModuleAvailability(modulo.availableAt)}
                       </p>
@@ -1033,11 +1082,17 @@ export default function TelaDeAula() {
                                 )}
                                 {lesson.duration} min
                               </span>
+                              {!isLessonAvailable(course, modulo, lesson) &&
+                                lesson.availableAt && (
+                                  <span className="mt-1 block text-[10px] font-semibold text-[#8F3651]">
+                                    Liberação em {formatModuleAvailability(lesson.availableAt)}
+                                  </span>
+                                )}
                             </span>
                           </button>
                         );
                       })}
-                      {(hasFullModuleAccess || isModuleAvailable(modulo)) &&
+                      {(hasFullModuleAccess || isModuleAvailable(course, modulo)) &&
                         modulo.gameType &&
                         modulo.lessons.every((lesson) =>
                           completedLessonIds.includes(lesson.id),
@@ -1083,6 +1138,11 @@ export default function TelaDeAula() {
             >
               {course.title}
             </h2>
+            {!isCourseAvailable(course) && course.availableAt && (
+              <p className="mt-2 text-[10px] font-semibold text-[#8F3651]">
+                Curso programado para {formatModuleAvailability(course.availableAt)}
+              </p>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -1093,7 +1153,7 @@ export default function TelaDeAula() {
                 >
                   Módulo {mIndex + 1}: {modulo.title}
                 </h3>
-                {!isModuleAvailable(modulo) && modulo.availableAt && (
+                {!isModuleAvailable(course, modulo) && modulo.availableAt && (
                   <p className="px-2 text-[10px] font-semibold text-[#8F3651]">
                     Liberação em {formatModuleAvailability(modulo.availableAt)}
                   </p>
@@ -1170,11 +1230,17 @@ export default function TelaDeAula() {
                             )}{" "}
                             {lesson.duration} min
                           </p>
+                          {!isLessonAvailable(course, modulo, lesson) &&
+                            lesson.availableAt && (
+                              <p className="mt-1 text-[10px] font-semibold text-[#8F3651]">
+                                Liberação em {formatModuleAvailability(lesson.availableAt)}
+                              </p>
+                            )}
                         </div>
                       </button>
                     );
                   })}
-                  {(hasFullModuleAccess || isModuleAvailable(modulo)) &&
+                  {(hasFullModuleAccess || isModuleAvailable(course, modulo)) &&
                     modulo.gameType &&
                     modulo.lessons.every((lesson) =>
                       completedLessonIds.includes(lesson.id),
@@ -1614,7 +1680,7 @@ export default function TelaDeAula() {
                 className={`font-medium ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}
               >
                 {!hasFullModuleAccess && course.modules.some(
-                  (courseModule) => !isModuleAvailable(courseModule),
+                  (courseModule) => !isModuleAvailable(course, courseModule),
                 )
                   ? "O próximo módulo será liberado na data programada."
                   : "Selecione uma aula no menu lateral para começar."}

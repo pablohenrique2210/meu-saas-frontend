@@ -13,9 +13,11 @@ import { apiUrl } from "@/lib/api-config";
 interface DashboardLesson {
   id: string;
   title: string;
+  availableAt: string | null;
 }
 
 interface DashboardModule {
+  availableAt: string | null;
   gameType: "DILEMA" | "INSPECAO" | "CORRIDA" | null;
   gameResults: Array<{ gameType: "DILEMA" | "INSPECAO" | "CORRIDA" }>;
   lessons: DashboardLesson[];
@@ -24,6 +26,7 @@ interface DashboardModule {
 interface DashboardCourse {
   id: string;
   title: string;
+  availableAt: string | null;
   modules?: DashboardModule[];
 }
 
@@ -39,6 +42,24 @@ interface HighlightedCourse {
   lessonTitle: string;
   statusLabel: string;
   actionLabel: string;
+}
+
+function scheduledStatus(...values: Array<string | null | undefined>) {
+  const now = Date.now();
+  const futureDates = values
+    .filter((value): value is string => Boolean(value))
+    .map((value) => new Date(value).getTime())
+    .filter((value) => Number.isFinite(value) && value > now);
+  if (futureDates.length === 0) return "Curso disponível";
+  const availableAt = new Date(Math.max(...futureDates));
+  return `Programado para ${new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(availableAt)}`;
 }
 
 export default function DashboardColaborador() {
@@ -165,15 +186,20 @@ export default function DashboardColaborador() {
         };
       }
     } else if (!primeiroCursoPendente) {
-      const firstLesson = course.modules
-        ?.flatMap((module) => module.lessons)
-        .find(Boolean);
+      const firstModule = course.modules?.find(
+        (courseModule) => courseModule.lessons.length > 0,
+      );
+      const firstLesson = firstModule?.lessons[0];
 
       primeiroCursoPendente = {
         id: course.id,
         title: course.title,
         lessonTitle: firstLesson?.title ?? "Conheça o conteúdo do programa",
-        statusLabel: "Curso disponível",
+        statusLabel: scheduledStatus(
+          course.availableAt,
+          firstModule?.availableAt,
+          firstLesson?.availableAt,
+        ),
         actionLabel: "Acessar curso",
       };
     }
