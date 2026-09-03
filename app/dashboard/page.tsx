@@ -33,6 +33,14 @@ interface DashboardProgress {
   updatedAt: string;
 }
 
+interface HighlightedCourse {
+  id: string;
+  title: string;
+  lessonTitle: string;
+  statusLabel: string;
+  actionLabel: string;
+}
+
 export default function DashboardColaborador() {
   const { user, isLoaded } = useUser();
   const { getToken, isSignedIn } = useAuth();
@@ -93,11 +101,8 @@ export default function DashboardColaborador() {
 
   // Cursos Concluídos e Curso em Andamento
   let completedCoursesCount = 0;
-  let cursoEmAndamento: {
-    id: string;
-    title: string;
-    lessonTitle: string;
-  } | null = null;
+  let cursoEmAndamento: HighlightedCourse | null = null;
+  let primeiroCursoPendente: HighlightedCourse | null = null;
   let dataUltimoAcesso = 0;
 
   for (const course of courses) {
@@ -155,10 +160,26 @@ export default function DashboardColaborador() {
           id: course.id,
           title: course.title,
           lessonTitle: tituloDaAula,
+          statusLabel: "Próxima parada",
+          actionLabel: "Retomar aula",
         };
       }
+    } else if (!primeiroCursoPendente) {
+      const firstLesson = course.modules
+        ?.flatMap((module) => module.lessons)
+        .find(Boolean);
+
+      primeiroCursoPendente = {
+        id: course.id,
+        title: course.title,
+        lessonTitle: firstLesson?.title ?? "Conheça o conteúdo do programa",
+        statusLabel: "Curso disponível",
+        actionLabel: "Acessar curso",
+      };
     }
   }
+
+  cursoEmAndamento ??= primeiroCursoPendente;
 
   // =========================================
   // INTERFACE PREMIUM
@@ -303,7 +324,7 @@ export default function DashboardColaborador() {
                   </h4>
                   <p className="text-[#641C32] font-bold text-sm truncate flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#641C32]"></span>
-                    Próxima parada:{" "}
+                    {cursoEmAndamento.statusLabel}:{" "}
                     <span className="text-[#776A6E] font-medium">
                       {cursoEmAndamento.lessonTitle}
                     </span>
@@ -314,7 +335,7 @@ export default function DashboardColaborador() {
                 href={`/aula/${cursoEmAndamento.id}`}
                 className="w-full md:w-auto bg-[#241A1D] border border-[#241A1D] text-white px-8 py-3.5 rounded-full font-bold hover:bg-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-black/10 shrink-0"
               >
-                Retomar aula
+                {cursoEmAndamento.actionLabel}
               </Link>
             </div>
           ) : (
