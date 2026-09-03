@@ -34,6 +34,7 @@ import { API_BASE_URL, apiAssetUrl, apiUrl } from "@/lib/api-config";
 import { LessonQuiz } from "@/components/lessons/LessonQuiz";
 import { lessonMaterialBlobDownloadUrl, legacyMaterialFilename, legacyMaterialDownloadError } from "@/lib/lesson-material-download";
 import { userFacingError } from "@/lib/user-facing-error";
+import { getMyProfile, type UserRole } from "@/lib/users-api";
 
 interface Attachment {
   id: string;
@@ -150,6 +151,7 @@ export default function TelaDeAula() {
   const { getToken } = useAuth();
 
   const [course, setCourse] = useState<Course | null>(null);
+  const [viewerRole, setViewerRole] = useState<UserRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -374,15 +376,17 @@ export default function TelaDeAula() {
         if (!token) throw new Error("Sessão sem token");
         const headers = { Authorization: `Bearer ${token}` };
         // Busca o curso e o progresso ao mesmo tempo para ser mais rápido!
-        const [courseRes, progRes] = await Promise.all([
+        const [courseRes, progRes, profile] = await Promise.all([
           fetch(apiUrl(`/api/courses/${courseId}`), { headers }),
           fetch(apiUrl("/api/courses/user-progress"), { headers }),
+          getMyProfile(token),
         ]);
 
         if (!courseRes.ok) throw new Error("Curso não encontrado");
 
         const courseData = (await courseRes.json()) as Course;
         setCourse(courseData);
+        setViewerRole(profile.role);
 
         // Guarda as aulas concluídas
         if (progRes.ok) {
@@ -399,7 +403,9 @@ export default function TelaDeAula() {
         ) {
           const firstAvailableModule = courseData.modules.find(
             (courseModule) =>
-              isModuleAvailable(courseModule) &&
+              (profile.role === "ADMIN" ||
+                profile.role === "HR_MANAGER" ||
+                isModuleAvailable(courseModule)) &&
               courseModule.lessons.length > 0,
           );
           if (firstAvailableModule) {
@@ -633,8 +639,11 @@ export default function TelaDeAula() {
   // === LÓGICA DE BLOQUEIO (CADEADO) ===
   // Cria uma lista linear com todas as aulas do curso para sabermos quem é a "aula anterior"
   const allLessons = course?.modules.flatMap((m) => m.lessons) || [];
+  const hasFullModuleAccess =
+    viewerRole === "ADMIN" || viewerRole === "HR_MANAGER";
 
   const isLessonUnlocked = (lessonId: string) => {
+    if (hasFullModuleAccess) return true;
     if (!allLessons.length) return true;
     const index = allLessons.findIndex((l) => l.id === lessonId);
     const scheduledModule = course?.modules.find((courseModule) =>
@@ -1028,7 +1037,7 @@ export default function TelaDeAula() {
                           </button>
                         );
                       })}
-                      {isModuleAvailable(modulo) &&
+                      {(hasFullModuleAccess || isModuleAvailable(modulo)) &&
                         modulo.gameType &&
                         modulo.lessons.every((lesson) =>
                           completedLessonIds.includes(lesson.id),
@@ -1165,7 +1174,7 @@ export default function TelaDeAula() {
                       </button>
                     );
                   })}
-                  {isModuleAvailable(modulo) &&
+                  {(hasFullModuleAccess || isModuleAvailable(modulo)) &&
                     modulo.gameType &&
                     modulo.lessons.every((lesson) =>
                       completedLessonIds.includes(lesson.id),
@@ -1604,7 +1613,7 @@ export default function TelaDeAula() {
               <p
                 className={`font-medium ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}
               >
-                {course.modules.some(
+                {!hasFullModuleAccess && course.modules.some(
                   (courseModule) => !isModuleAvailable(courseModule),
                 )
                   ? "O próximo módulo será liberado na data programada."
