@@ -17,6 +17,7 @@ export interface UserProfile {
   phone: string | null;
   hireDate: string | null;
   isActive: boolean;
+  courseAccesses: Array<{ course: EmployeeProgram }>;
 }
 
 export interface ManagedCompany {
@@ -76,6 +77,8 @@ export interface CreateEmployeeInvitationInput {
 }
 
 export interface UpdateUserInput {
+  companyId?: string;
+  courseIds?: string[];
   name?: string;
   role?: UserRole;
   position?: string;
@@ -223,6 +226,13 @@ function withCompany(path: string, companyId?: string) {
 
 export function listManagedCompanies(token: string, signal?: AbortSignal) {
   return usersRequest<ManagedCompany[]>("/api/companies", token, { signal });
+}
+
+export function createManagedCompany(token: string, name: string) {
+  return usersRequest<ManagedCompany>("/api/companies", token, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
 }
 
 export function listUsers(

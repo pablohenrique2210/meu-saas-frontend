@@ -9,6 +9,7 @@ import {
   listEmployeePrograms,
   updateUser,
   type EmployeeProgram,
+  type ManagedCompany,
   type UserProfile,
   type UserRole,
 } from "@/lib/users-api";
@@ -20,11 +21,13 @@ interface EmployeeManagerModalProps {
   managerRole: UserRole;
   managerUserId?: string;
   companyId?: string;
+  companies: ManagedCompany[];
   onClose: () => void;
-  onSaved: () => void | Promise<void>;
+  onSaved: (companyId?: string) => void | Promise<void>;
 }
 
 interface EmployeeFormState {
+  companyId: string;
   name: string;
   email: string;
   cpf: string;
@@ -37,8 +40,12 @@ interface EmployeeFormState {
   courseIds: string[];
 }
 
-function createInitialState(employee?: UserProfile | null): EmployeeFormState {
+function createInitialState(
+  employee?: UserProfile | null,
+  companyId?: string,
+): EmployeeFormState {
   return {
+    companyId: employee?.companyId ?? companyId ?? "",
     name: employee?.name ?? "",
     email: employee?.email ?? "",
     cpf: "",
@@ -48,7 +55,8 @@ function createInitialState(employee?: UserProfile | null): EmployeeFormState {
     phone: employee?.phone ?? "",
     hireDate: employee?.hireDate?.slice(0, 10) ?? "",
     isActive: employee?.isActive ?? true,
-    courseIds: [],
+    courseIds:
+      employee?.courseAccesses?.map((access) => access.course.id) ?? [],
   };
 }
 
@@ -67,11 +75,14 @@ export default function EmployeeManagerModal({
   managerRole,
   managerUserId,
   companyId,
+  companies,
   onClose,
   onSaved,
 }: EmployeeManagerModalProps) {
   const { getToken } = useAuth();
-  const [form, setForm] = useState(() => createInitialState(employee));
+  const [form, setForm] = useState(() =>
+    createInitialState(employee, companyId),
+  );
   const [programs, setPrograms] = useState<EmployeeProgram[]>([]);
   const [isLoadingPrograms, setIsLoadingPrograms] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -87,7 +98,7 @@ export default function EmployeeManagerModal({
     (managerRole === "ADMIN" || employee?.role === "USER");
 
   useEffect(() => {
-    if (!isOpen || isEditing) return;
+    if (!isOpen) return;
 
     const controller = new AbortController();
     const loadPrograms = async () => {
@@ -101,16 +112,6 @@ export default function EmployeeManagerModal({
           controller.signal,
         );
         setPrograms(availablePrograms);
-        setForm((current) => {
-          if (current.courseIds.length > 0) return current;
-          const leaderProgram = availablePrograms.find((program) =>
-            program.title.toLocaleLowerCase("pt-BR").includes("líder em ação"),
-          );
-          return {
-            ...current,
-            courseIds: leaderProgram ? [leaderProgram.id] : [],
-          };
-        });
       } catch (loadError) {
         if (loadError instanceof DOMException && loadError.name === "AbortError")
           return;
@@ -122,7 +123,7 @@ export default function EmployeeManagerModal({
 
     void loadPrograms();
     return () => controller.abort();
-  }, [getToken, isEditing, isOpen]);
+  }, [getToken, isOpen]);
 
   const setField = <Key extends keyof EmployeeFormState>(
     key: Key,
@@ -155,11 +156,12 @@ export default function EmployeeManagerModal({
           phone: form.phone.trim(),
           ...(form.hireDate ? { hireDate: form.hireDate } : {}),
           isActive: form.isActive,
+          ...(form.role === "USER" ? { courseIds: form.courseIds } : {}),
           ...(canAssignRoles ? { role: form.role } : {}),
         });
       } else {
         await createEmployeeInvitation(token, {
-          companyId,
+          companyId: form.companyId,
           name: form.name.trim(),
           email: form.email.trim(),
           cpf: form.cpf,
@@ -172,7 +174,7 @@ export default function EmployeeManagerModal({
         });
       }
 
-      await onSaved();
+      await onSaved(isEditing ? employee?.companyId : form.companyId);
       onClose();
     } catch (submissionError) {
       setError(userFacingError(submissionError, "Não foi possível guardar o colaborador agora."));
@@ -280,6 +282,35 @@ export default function EmployeeManagerModal({
               {!isEditing && (
                 <label className="sm:col-span-2">
                   <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#776A6E]">
+                    Empresa
+                  </span>
+                  <select
+                    required
+                    value={form.companyId}
+                    onChange={(event) =>
+                      setField("companyId", event.target.value)
+                    }
+                    className="w-full rounded-xl border border-[#E9E0E2] bg-white px-4 py-3 text-sm outline-none transition focus:border-[#641C32]"
+                  >
+                    <option value="" disabled>
+                      Selecione a empresa do colaborador
+                    </option>
+                    {companies.map((company) => (
+                      <option key={company.id} value={company.id}>
+                        {company.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="mt-2 block text-xs leading-relaxed text-[#776A6E]">
+                    O perfil, os relatórios e os convites ficarão vinculados a
+                    esta empresa.
+                  </span>
+                </label>
+              )}
+
+              {!isEditing && (
+                <label className="sm:col-span-2">
+                  <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#776A6E]">
                     CPF para validação do vínculo
                   </span>
                   <input
@@ -368,10 +399,10 @@ export default function EmployeeManagerModal({
                 </label>
               )}
 
-              {!isEditing && (
+              {form.role === "USER" && (
                 <fieldset className="sm:col-span-2">
                   <legend className="mb-2 text-xs font-bold uppercase tracking-wider text-[#776A6E]">
-                    Programas disponíveis
+                    Cursos visíveis para este colaborador
                   </legend>
                   <div className="space-y-3">
                     {isLoadingPrograms ? (
@@ -411,7 +442,7 @@ export default function EmployeeManagerModal({
                     ) : (
                       <div className="rounded-2xl border border-[#FAD2CF] bg-[#FCE8E6]/50 p-4 text-sm text-[#A50E0E]">
                         Nenhum programa foi encontrado. Cadastre o curso antes de
-                        enviar o convite.
+                        liberar o acesso.
                       </div>
                     )}
                   </div>
@@ -522,7 +553,7 @@ export default function EmployeeManagerModal({
                     isSaving ||
                     isDeleting ||
                     isConfirmingDelete ||
-                    (!isEditing &&
+                    (form.role === "USER" &&
                       (isLoadingPrograms || form.courseIds.length === 0))
                   }
                   className="rounded-full bg-[#641C32] px-7 py-3 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(100,28,50,0.2)] transition hover:bg-[#7D2943] disabled:cursor-wait disabled:opacity-60"

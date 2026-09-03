@@ -21,9 +21,11 @@ import {
 import ProfileModal from "../ProfileModal";
 import BrandLogo from "../BrandLogo";
 import EmployeeManagerModal from "./EmployeeManagerModal";
+import CompanyManagerModal from "./CompanyManagerModal";
 import ReportGeneratorModal from "./ReportGeneratorModal";
 import {
   buildWhatsAppActivationUrl,
+  createManagedCompany,
   getMyProfile,
   getEmployeeInvitationLink,
   getUser,
@@ -94,6 +96,7 @@ export default function DashboardRH() {
     null,
   );
   const [isCreateEmployeeOpen, setIsCreateEmployeeOpen] = useState(false);
+  const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
   const [isReportGeneratorOpen, setIsReportGeneratorOpen] = useState(false);
   const [openingEmployeeId, setOpeningEmployeeId] = useState<string | null>(
     null,
@@ -110,6 +113,28 @@ export default function DashboardRH() {
 
   const canManageUsers =
     profile?.role === "ADMIN" || profile?.role === "HR_MANAGER";
+
+  const handleCreateCompany = async (name: string) => {
+    const token = await getToken({ skipCache: true });
+    if (!token) throw new Error("A sessão não forneceu um token de acesso.");
+
+    try {
+      const company = await createManagedCompany(token, name);
+      setCompanies((current) =>
+        [...current.filter((item) => item.id !== company.id), company].sort(
+          (left, right) => left.name.localeCompare(right.name, "pt-BR"),
+        ),
+      );
+      setSelectedEmployee(null);
+      setEmployeeQuery("");
+      setSelectedCompanyId(company.id);
+      setIsCreateCompanyOpen(false);
+    } catch (error) {
+      throw new Error(
+        userFacingError(error, "Não foi possível cadastrar a empresa."),
+      );
+    }
+  };
 
   const loadUsers = useCallback(
     async (signal?: AbortSignal) => {
@@ -256,7 +281,12 @@ export default function DashboardRH() {
     }
   };
 
-  const handleEmployeeSaved = async () => {
+  const handleEmployeeSaved = async (savedCompanyId?: string) => {
+    if (savedCompanyId && savedCompanyId !== selectedCompanyId) {
+      setSelectedCompanyId(savedCompanyId);
+      setSelectedEmployee(null);
+      return;
+    }
     await loadUsers();
     setSelectedEmployee(null);
   };
@@ -674,6 +704,15 @@ export default function DashboardRH() {
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3">
+                  {profile?.role === "ADMIN" && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateCompanyOpen(true)}
+                      className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border border-[#D8C5CB] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#641C32] transition hover:bg-[#F5EFEC] sm:col-auto sm:rounded-full"
+                    >
+                      <Building2 size={16} /> Nova empresa
+                    </button>
+                  )}
                   {canManageUsers && (
                     <button
                       type="button"
@@ -970,6 +1009,7 @@ export default function DashboardRH() {
           managerRole={profile?.role ?? "USER"}
           managerUserId={profile?.id}
           companyId={selectedCompanyId || profile?.companyId}
+          companies={companies}
           onClose={() => setSelectedEmployee(null)}
           onSaved={handleEmployeeSaved}
         />
@@ -984,8 +1024,15 @@ export default function DashboardRH() {
           managerRole={profile?.role ?? "USER"}
           managerUserId={profile?.id}
           companyId={selectedCompanyId || profile?.companyId}
+          companies={companies}
           onClose={() => setIsCreateEmployeeOpen(false)}
           onSaved={handleEmployeeSaved}
+        />
+
+        <CompanyManagerModal
+          isOpen={isCreateCompanyOpen}
+          onClose={() => setIsCreateCompanyOpen(false)}
+          onSave={handleCreateCompany}
         />
 
         <ReportGeneratorModal

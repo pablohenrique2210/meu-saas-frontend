@@ -57,6 +57,7 @@ interface Module {
   id: string;
   title: string;
   order: number;
+  availableAt: string | null;
   gameType: "DILEMA" | "INSPECAO" | "CORRIDA" | null;
   gameResults: Array<{ gameType: "DILEMA" | "INSPECAO" | "CORRIDA" }>;
   lessons: Lesson[];
@@ -107,6 +108,29 @@ function formatTime(totalSeconds: number) {
   const minutes = Math.floor(safeSeconds / 60);
   const seconds = safeSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function effectiveMinimumWatchSeconds(lesson: Lesson) {
+  if (lesson.type !== "VIDEO") return 0;
+  const configured = Math.max(0, Number(lesson.minimumWatchSeconds) || 0);
+  if (configured > 0) return configured;
+  return Math.max(0, (Number(lesson.duration) || 0) * 60);
+}
+
+function isModuleAvailable(module: Module, now = Date.now()) {
+  if (!module.availableAt) return true;
+  return new Date(module.availableAt).getTime() <= now;
+}
+
+function formatModuleAvailability(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 async function responseMessage(response: Response, fallback: string) {
@@ -373,9 +397,19 @@ export default function TelaDeAula() {
           courseData.modules?.length > 0 &&
           courseData.modules[0].lessons?.length > 0
         ) {
-          setActiveModule(courseData.modules[0]);
-          setActiveLesson(courseData.modules[0].lessons[0]);
-          setVideoError("");
+          const firstAvailableModule = courseData.modules.find(
+            (courseModule) =>
+              isModuleAvailable(courseModule) &&
+              courseModule.lessons.length > 0,
+          );
+          if (firstAvailableModule) {
+            setActiveModule(firstAvailableModule);
+            setActiveLesson(firstAvailableModule.lessons[0]);
+            setVideoError("");
+          } else {
+            setActiveModule(null);
+            setActiveLesson(null);
+          }
         }
       } catch (courseError) {
         console.warn("Lesson unavailable", courseError);
@@ -603,6 +637,10 @@ export default function TelaDeAula() {
   const isLessonUnlocked = (lessonId: string) => {
     if (!allLessons.length) return true;
     const index = allLessons.findIndex((l) => l.id === lessonId);
+    const scheduledModule = course?.modules.find((courseModule) =>
+      courseModule.lessons.some((lesson) => lesson.id === lessonId),
+    );
+    if (scheduledModule && !isModuleAvailable(scheduledModule)) return false;
 
     // A primeira aula está sempre destrancada!
     if (index === 0) return true;
@@ -708,11 +746,10 @@ export default function TelaDeAula() {
     setMediaReloadKey(0);
     setIsCompleted(completedLessonIds.includes(less.id));
     setWatchedSeconds(0);
-    setMinimumWatchSeconds(less.minimumWatchSeconds ?? 0);
-    setRemainingSeconds(less.minimumWatchSeconds ?? 0);
-    setCanComplete(
-      less.type !== "VIDEO" || (less.minimumWatchSeconds ?? 0) === 0,
-    );
+    const requiredSeconds = effectiveMinimumWatchSeconds(less);
+    setMinimumWatchSeconds(requiredSeconds);
+    setRemainingSeconds(requiredSeconds);
+    setCanComplete(less.type !== "VIDEO" || requiredSeconds === 0);
     setQuizRequired(false);
     setQuizCompleted(true);
     setIsLessonQuizOpen(false);
@@ -919,6 +956,11 @@ export default function TelaDeAula() {
                     >
                       Módulo {moduleIndex + 1}: {modulo.title}
                     </h3>
+                    {!isModuleAvailable(modulo) && modulo.availableAt && (
+                      <p className="mb-2 px-2 text-[10px] font-semibold text-[#8F3651]">
+                        Liberação em {formatModuleAvailability(modulo.availableAt)}
+                      </p>
+                    )}
                     <div className="space-y-1.5">
                       {modulo.lessons.map((lesson, lessonIndex) => {
                         const isCurrent = activeLesson?.id === lesson.id;
@@ -986,7 +1028,8 @@ export default function TelaDeAula() {
                           </button>
                         );
                       })}
-                      {modulo.gameType &&
+                      {isModuleAvailable(modulo) &&
+                        modulo.gameType &&
                         modulo.lessons.every((lesson) =>
                           completedLessonIds.includes(lesson.id),
                         ) && (
@@ -1041,6 +1084,11 @@ export default function TelaDeAula() {
                 >
                   Módulo {mIndex + 1}: {modulo.title}
                 </h3>
+                {!isModuleAvailable(modulo) && modulo.availableAt && (
+                  <p className="px-2 text-[10px] font-semibold text-[#8F3651]">
+                    Liberação em {formatModuleAvailability(modulo.availableAt)}
+                  </p>
+                )}
                 <div className="space-y-1">
                   {modulo.lessons.map((lesson, lIndex) => {
                     const isCurrent = activeLesson?.id === lesson.id;
@@ -1117,7 +1165,8 @@ export default function TelaDeAula() {
                       </button>
                     );
                   })}
-                  {modulo.gameType &&
+                  {isModuleAvailable(modulo) &&
+                    modulo.gameType &&
                     modulo.lessons.every((lesson) =>
                       completedLessonIds.includes(lesson.id),
                     ) && (
@@ -1548,10 +1597,18 @@ export default function TelaDeAula() {
             </>
           ) : (
             <div className="text-center py-20">
+              <Lock
+                size={34}
+                className="mx-auto mb-4 text-[#8F3651]"
+              />
               <p
                 className={`font-medium ${isNightMode ? "text-white/55" : "text-[#776A6E]"}`}
               >
-                Selecione uma aula no menu lateral para começar.
+                {course.modules.some(
+                  (courseModule) => !isModuleAvailable(courseModule),
+                )
+                  ? "O próximo módulo será liberado na data programada."
+                  : "Selecione uma aula no menu lateral para começar."}
               </p>
             </div>
           )}
@@ -1579,7 +1636,12 @@ export default function TelaDeAula() {
             <span className="hidden min-[355px]:inline">Dúvidas?</span>
           </button>
 
-          {!isCompleted ? (
+          {!activeLesson ? (
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2 text-right text-sm font-semibold text-[#641C32]">
+              <Lock size={17} />
+              Aguardando a liberação programada
+            </div>
+          ) : !isCompleted ? (
             <div className="flex min-w-0 flex-1 items-center justify-end gap-4">
               {minimumWatchSeconds > 0 && (
                 <div className="hidden w-52 sm:block">

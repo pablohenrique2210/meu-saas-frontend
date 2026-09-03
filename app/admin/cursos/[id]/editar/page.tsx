@@ -87,6 +87,7 @@ interface Lesson {
 interface Module {
   id: string;
   title: string;
+  availableAt: string;
   gameType: "" | "DILEMA" | "INSPECAO" | "CORRIDA";
   gameConfigText: string;
   lessons: Lesson[];
@@ -102,6 +103,7 @@ interface CourseApiResponse {
   modules?: Array<{
     id: string;
     title: string;
+    availableAt?: string | null;
     gameType?: Module["gameType"] | null;
     gameConfig?: unknown;
     lessons: Array<{
@@ -123,6 +125,14 @@ const steps = [
   { id: "capa", name: "Capa e Visual", icon: ImageIcon },
   { id: "conteudo", name: "Módulos e Aulas", icon: LayoutGrid },
 ];
+
+function toDateTimeLocal(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
 const categories = [
   { value: "LEADERSHIP_DEVELOPMENT", label: "Capacitação de Líderes" },
   { value: "STRESS_BURNOUT", label: "Gestão do Estresse e Burnout" },
@@ -246,6 +256,7 @@ export function CourseEditor({
           const loadedModules: Module[] = data.modules.map((m) => ({
             id: m.id,
             title: m.title,
+            availableAt: toDateTimeLocal(m.availableAt),
             gameType: m.gameType || "",
             gameConfigText: m.gameConfig
               ? JSON.stringify(m.gameConfig, null, 2)
@@ -295,6 +306,7 @@ export function CourseEditor({
       {
         id: `temp_mod_${Date.now()}`,
         title: "",
+        availableAt: "",
         gameType: "",
         gameConfigText: "",
         lessons: [],
@@ -304,6 +316,10 @@ export function CourseEditor({
     setModules(modules.filter((m) => m.id !== modId));
   const updateModuleTitle = (modId: string, title: string) =>
     setModules(modules.map((m) => (m.id === modId ? { ...m, title } : m)));
+  const updateModuleAvailability = (modId: string, availableAt: string) =>
+    setModules(
+      modules.map((m) => (m.id === modId ? { ...m, availableAt } : m)),
+    );
   const updateModuleGame = (
     modId: string,
     field: "gameType" | "gameConfigText",
@@ -796,6 +812,9 @@ export function CourseEditor({
         modules: modules.map((m) => ({
           ...(!isCreating && { id: m.id }),
           title: m.title,
+          availableAt: m.availableAt
+            ? new Date(m.availableAt).toISOString()
+            : null,
           gameType: m.gameType || null,
           gameConfig: m.gameType ? JSON.parse(m.gameConfigText) : null,
           lessons: m.lessons.map((l) => ({
@@ -1155,7 +1174,22 @@ export function CourseEditor({
                     </div>
 
                     <div className="border-b border-slate-200 bg-white p-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                        <label className="flex flex-1 flex-col gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+                          Liberação para colaboradores
+                          <input
+                            type="datetime-local"
+                            value={mod.availableAt}
+                            onChange={(event) =>
+                              updateModuleAvailability(
+                                mod.id,
+                                event.target.value,
+                              )
+                            }
+                            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-[#641C32]"
+                          />
+                        </label>
+                        <div className="flex flex-col gap-2">
                         <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
                           Avaliação do módulo
                         </label>
@@ -1173,6 +1207,7 @@ export function CourseEditor({
                             Corrida do Conhecimento
                           </option>
                         </select>
+                        </div>
                       </div>
                       {mod.gameType && (
                         <div className="mt-4">
@@ -1287,12 +1322,16 @@ export function CourseEditor({
                                     aria-label="Tempo mínimo obrigatório em minutos"
                                     title="Tempo que o colaborador precisa assistir antes de concluir"
                                     type="number"
-                                    min="0.5"
+                                    min="0.01"
                                     max={lesson.duration || undefined}
-                                    step="0.5"
+                                    step="0.01"
                                     value={
                                       lesson.minimumWatchSeconds
-                                        ? lesson.minimumWatchSeconds / 60
+                                        ? Number(
+                                            (
+                                              lesson.minimumWatchSeconds / 60
+                                            ).toFixed(2),
+                                          )
                                         : ""
                                     }
                                     onChange={(e) =>
@@ -1303,7 +1342,7 @@ export function CourseEditor({
                                         Math.round(Number(e.target.value) * 60),
                                       )
                                     }
-                                    placeholder="Mínimo (min)"
+                                    placeholder="Mínimo (min; aceita segundos)"
                                     className="w-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-center text-sm font-semibold text-[#641C32] outline-none"
                                   />
                                 )}
