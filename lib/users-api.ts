@@ -26,6 +26,12 @@ export interface ManagedCompany {
   _count: { users: number; employeeInvites: number };
 }
 
+export interface DeleteCompanyResult {
+  id: string;
+  name: string;
+  deleted: true;
+}
+
 export interface CreateUserInput {
   id: string;
   name: string;
@@ -233,6 +239,14 @@ export function createManagedCompany(token: string, name: string) {
     method: "POST",
     body: JSON.stringify({ name }),
   });
+}
+
+export function deleteManagedCompany(token: string, id: string) {
+  return usersRequest<DeleteCompanyResult>(
+    `/api/companies/${encodeURIComponent(id)}`,
+    token,
+    { method: "DELETE" },
+  );
 }
 
 export function listUsers(

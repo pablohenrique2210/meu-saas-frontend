@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
+  Trash2,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import ReportGeneratorModal from "./ReportGeneratorModal";
 import {
   buildWhatsAppActivationUrl,
   createManagedCompany,
+  deleteManagedCompany,
   getMyProfile,
   getEmployeeInvitationLink,
   getUser,
@@ -97,6 +99,9 @@ export default function DashboardRH() {
   );
   const [isCreateEmployeeOpen, setIsCreateEmployeeOpen] = useState(false);
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
+  const [deletingCompanyId, setDeletingCompanyId] = useState<string | null>(
+    null,
+  );
   const [isReportGeneratorOpen, setIsReportGeneratorOpen] = useState(false);
   const [openingEmployeeId, setOpeningEmployeeId] = useState<string | null>(
     null,
@@ -133,6 +138,45 @@ export default function DashboardRH() {
       throw new Error(
         userFacingError(error, "Não foi possível cadastrar a empresa."),
       );
+    }
+  };
+
+  const handleDeleteCompany = async () => {
+    if (!selectedCompany || selectedCompany.id === profile?.companyId) return;
+
+    const inviteWarning = selectedCompany._count.employeeInvites
+      ? ` Também serão removidos ${selectedCompany._count.employeeInvites} convite(s) vinculado(s).`
+      : "";
+    const confirmed = window.confirm(
+      `Excluir definitivamente a empresa "${selectedCompany.name}"?${inviteWarning}`,
+    );
+    if (!confirmed) return;
+
+    setDeletingCompanyId(selectedCompany.id);
+    setUsersError(null);
+    try {
+      const token = await getToken({ skipCache: true });
+      if (!token) throw new Error("A sessão não forneceu um token de acesso.");
+
+      await deleteManagedCompany(token, selectedCompany.id);
+      const remainingCompanies = companies.filter(
+        (company) => company.id !== selectedCompany.id,
+      );
+      setCompanies(remainingCompanies);
+      setSelectedEmployee(null);
+      setEmployeeQuery("");
+      setSelectedCompanyId(
+        remainingCompanies.find((company) => company.id === profile?.companyId)
+          ?.id ??
+          remainingCompanies[0]?.id ??
+          "",
+      );
+    } catch (error) {
+      setUsersError(
+        userFacingError(error, "Não foi possível excluir a empresa."),
+      );
+    } finally {
+      setDeletingCompanyId(null);
     }
   };
 
@@ -590,27 +634,43 @@ export default function DashboardRH() {
               </div>
 
               <div className="mb-6 grid gap-3 rounded-[22px] border border-[#E9E0E2] bg-white p-4 shadow-[0_8px_30px_rgba(36,26,29,0.03)] md:grid-cols-[1fr_1.2fr]">
-                <label className="block">
-                  <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#776A6E]">
-                    <Building2 size={14} /> Empresa analisada
-                  </span>
-                  <select
-                    value={selectedCompanyId}
-                    onChange={(event) => {
-                      setSelectedEmployee(null);
-                      setEmployeeQuery("");
-                      setSelectedCompanyId(event.target.value);
-                    }}
-                    disabled={isUsersLoading || companies.length <= 1}
-                    className="w-full rounded-xl border border-[#E9E0E2] bg-[#FAF7F4] px-4 py-3 text-sm font-semibold text-[#241A1D] outline-none transition focus:border-[#641C32] disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {companies.map((company) => (
-                      <option key={company.id} value={company.id}>
-                        {company.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="flex items-end gap-2">
+                  <label className="min-w-0 flex-1">
+                    <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#776A6E]">
+                      <Building2 size={14} /> Empresa analisada
+                    </span>
+                    <select
+                      value={selectedCompanyId}
+                      onChange={(event) => {
+                        setSelectedEmployee(null);
+                        setEmployeeQuery("");
+                        setSelectedCompanyId(event.target.value);
+                      }}
+                      disabled={isUsersLoading || companies.length <= 1}
+                      className="w-full rounded-xl border border-[#E9E0E2] bg-[#FAF7F4] px-4 py-3 text-sm font-semibold text-[#241A1D] outline-none transition focus:border-[#641C32] disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {companies.map((company) => (
+                        <option key={company.id} value={company.id}>
+                          {company.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {profile?.role === "ADMIN" &&
+                    selectedCompany &&
+                    selectedCompany.id !== profile.companyId && (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteCompany()}
+                        disabled={deletingCompanyId === selectedCompany.id}
+                        aria-label={`Excluir empresa ${selectedCompany.name}`}
+                        title="Excluir empresa selecionada"
+                        className="inline-flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-xl border border-[#F1CCD5] bg-[#FFF5F7] text-[#A4183A] transition hover:border-[#E6A9B8] hover:bg-[#FFE9EE] disabled:cursor-wait disabled:opacity-50"
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    )}
+                </div>
                 <label className="block">
                   <span className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#776A6E]">
                     <Search size={14} /> Filtrar colaborador
