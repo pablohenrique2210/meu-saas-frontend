@@ -96,7 +96,7 @@ interface LessonProgressSummary {
 const CONSULTANT_NAME = "Lilian Arruda";
 const CONSULTANT_ROLE = "Consultora de Educação e Saúde Corporativa";
 const CONSULTANT_WHATSAPP_NUMBER = "5511943874070";
-const CONSULTANT_EMAIL = "contato@lilianarruda.com.br";
+const CONSULTANT_EMAIL = "consultoria@lilianarruda.com.br";
 const CONSULTANT_WHATSAPP_MESSAGE =
   "Olá, Lilian! Estou com uma dúvida sobre um curso na plataforma.";
 const CONSULTANT_WHATSAPP_URL = `https://wa.me/${CONSULTANT_WHATSAPP_NUMBER}?text=${encodeURIComponent(
@@ -112,6 +112,8 @@ function formatTime(totalSeconds: number) {
   const seconds = safeSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
+
+type ProgressEventType = "PLAYING" | "SEEK" | "PAUSE";
 
 function effectiveMinimumWatchSeconds(lesson: Lesson) {
   if (lesson.type !== "VIDEO") return 0;
@@ -222,6 +224,13 @@ export default function TelaDeAula() {
   const bunnyTime = useRef(0);
   const lastSavedTime = useRef(0);
   const isSavingProgress = useRef(false);
+  const pendingProgressSave = useRef<{
+    time: number;
+    force: boolean;
+    requestCompletion: boolean;
+    eventType: ProgressEventType;
+    playbackRate: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!activeLesson || !user) return;
@@ -530,8 +539,22 @@ export default function TelaDeAula() {
     time: number,
     force = false,
     requestCompletion = false,
+    eventType: ProgressEventType = "PLAYING",
+    currentPlaybackRate = playbackRate,
   ) => {
-    if (!user || !activeLesson || isSavingProgress.current) return false;
+    if (!user || !activeLesson) return false;
+    if (isSavingProgress.current) {
+      if (force || eventType !== "PLAYING") {
+        pendingProgressSave.current = {
+          time,
+          force,
+          requestCompletion,
+          eventType,
+          playbackRate: currentPlaybackRate,
+        };
+      }
+      return false;
+    }
     if (!force && Math.abs(time - lastSavedTime.current) < 4) return false;
 
     isSavingProgress.current = true;
@@ -547,6 +570,8 @@ export default function TelaDeAula() {
         body: JSON.stringify({
           lessonId: activeLesson.id,
           lastTime: time,
+          eventType,
+          playbackRate: currentPlaybackRate,
           ...(requestCompletion ? { isCompleted: true } : {}),
         }),
       });
@@ -598,6 +623,17 @@ export default function TelaDeAula() {
       return false;
     } finally {
       isSavingProgress.current = false;
+      const pending = pendingProgressSave.current;
+      pendingProgressSave.current = null;
+      if (pending) {
+        void saveProgressToCloud(
+          pending.time,
+          pending.force,
+          pending.requestCompletion,
+          pending.eventType,
+          pending.playbackRate,
+        );
+      }
     }
   };
 
@@ -1365,9 +1401,15 @@ export default function TelaDeAula() {
                   activeLesson.contentUrl.trim() !== "" ? (
                     activeLesson.contentUrl.startsWith("bunny://") ? (
                       <BunnyLessonPlayer key={`${activeLesson.id}:${activeLesson.contentUrl}`} lessonId={activeLesson.id} title={activeLesson.title}
-                        onTime={(seconds, force) => {
+                        onTime={(seconds, force, eventType, playerRate) => {
                           bunnyTime.current = seconds;
-                          void saveProgressToCloud(seconds, force);
+                          void saveProgressToCloud(
+                            seconds,
+                            force,
+                            false,
+                            eventType,
+                            playerRate,
+                          );
                         }} />
                     ) : isNativeVideo(activeLesson.contentUrl) ? (
                       <video
@@ -1387,6 +1429,36 @@ export default function TelaDeAula() {
                           setVideoError("Esta aula está temporariamente indisponível.")
                         }
                         onTimeUpdate={handleTimeUpdate}
+                        onSeeking={() => {
+                          if (videoRef.current) {
+                            void saveProgressToCloud(
+                              videoRef.current.currentTime,
+                              true,
+                              false,
+                              "SEEK",
+                            );
+                          }
+                        }}
+                        onSeeked={() => {
+                          if (videoRef.current) {
+                            void saveProgressToCloud(
+                              videoRef.current.currentTime,
+                              true,
+                              false,
+                              "SEEK",
+                            );
+                          }
+                        }}
+                        onPause={() => {
+                          if (videoRef.current && !videoRef.current.ended) {
+                            void saveProgressToCloud(
+                              videoRef.current.currentTime,
+                              true,
+                              false,
+                              "PAUSE",
+                            );
+                          }
+                        }}
                         onEnded={() => {
                           if (videoRef.current) {
                             void saveProgressToCloud(

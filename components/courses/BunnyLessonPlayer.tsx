@@ -12,9 +12,15 @@ type Player = {
 };
 type PlayerWindow = Window & { playerjs?: { Player: new (iframe: HTMLIFrameElement) => Player } };
 type Playback = { url: string; lastTime: number };
+type ProgressEventType = "PLAYING" | "SEEK" | "PAUSE";
 
 export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
-  lessonId: string; title: string; onTime: (seconds: number, force?: boolean) => void;
+  lessonId: string; title: string; onTime: (
+    seconds: number,
+    force?: boolean,
+    eventType?: ProgressEventType,
+    playbackRate?: number,
+  ) => void;
 }) {
   const { getToken } = useAuth();
   const [playback, setPlayback] = useState<Playback | null>(null);
@@ -69,6 +75,10 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
       !loadedIframe.isConnected || !loadedIframe.contentWindow) return;
     let active = true;
     let seconds = playback.lastTime;
+    let previousSeconds = seconds;
+    let previousSampleAt = performance.now();
+    let isPlaying = false;
+    let inferredPlaybackRate = 1;
     const player = new library.Player(loadedIframe);
     const timeout = setTimeout(() => {
       if (active) { setMessage("Não foi possível iniciar esta aula agora."); setFailed(true); }
@@ -77,17 +87,60 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
       if (!active) return;
       clearTimeout(timeout);
       if (seconds > 0) player.setCurrentTime(seconds);
-      callback.current(seconds);
+      callback.current(seconds, true, "SEEK", 1);
+      player.on("play", () => {
+        if (!active) return;
+        isPlaying = true;
+        previousSeconds = seconds;
+        previousSampleAt = performance.now();
+      });
       player.on("timeupdate", (event) => {
         if (!active) return;
         let data: unknown = event;
         if (typeof data === "string") { try { data = JSON.parse(data); } catch { return; } }
         if (!data || typeof data !== "object" || !("seconds" in data) || typeof data.seconds !== "number" ||
           !Number.isFinite(data.seconds) || data.seconds < 0) return;
-        seconds = data.seconds;
-        callback.current(seconds);
+        const nextSeconds = data.seconds;
+        const now = performance.now();
+        const elapsed = Math.max(0.001, (now - previousSampleAt) / 1000);
+        const advance = nextSeconds - previousSeconds;
+        const discontinuity =
+          !isPlaying || advance < -0.5 || advance > elapsed * 2 + 1.5;
+        if (!discontinuity && advance > 0) {
+          inferredPlaybackRate = Math.min(
+            2,
+            Math.max(0.25, advance / elapsed),
+          );
+        }
+        seconds = nextSeconds;
+        previousSeconds = nextSeconds;
+        previousSampleAt = now;
+        callback.current(
+          seconds,
+          discontinuity,
+          discontinuity ? "SEEK" : "PLAYING",
+          inferredPlaybackRate,
+        );
       });
-      for (const event of ["pause", "ended"]) player.on(event, () => { if (active) callback.current(seconds, true); });
+      player.on("seeking", () => {
+        if (active) callback.current(seconds, true, "SEEK", inferredPlaybackRate);
+      });
+      player.on("seeked", () => {
+        if (!active) return;
+        previousSeconds = seconds;
+        previousSampleAt = performance.now();
+        callback.current(seconds, true, "SEEK", inferredPlaybackRate);
+      });
+      player.on("pause", () => {
+        if (!active) return;
+        isPlaying = false;
+        callback.current(seconds, true, "PAUSE", inferredPlaybackRate);
+      });
+      player.on("ended", () => {
+        if (!active) return;
+        isPlaying = false;
+        callback.current(seconds, true, "PLAYING", inferredPlaybackRate);
+      });
       player.on("error", () => {
         if (active) { setMessage("Não foi possível iniciar esta aula agora."); setFailed(true); }
       });
@@ -97,7 +150,7 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
       // Player.js usa postMessage dentro de off(). Ao trocar de aula, o React
       // pode remover o iframe antes deste cleanup; nesse caso contentWindow é null.
       if (loadedIframe.isConnected && loadedIframe.contentWindow) {
-        for (const event of ["ready", "timeupdate", "pause", "ended", "error"]) {
+        for (const event of ["ready", "play", "timeupdate", "seeking", "seeked", "pause", "ended", "error"]) {
           try { player.off(event); } catch { /* O iframe já está sendo desmontado. */ }
         }
       }

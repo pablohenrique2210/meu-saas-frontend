@@ -37,6 +37,9 @@ const routesWithInlineAccountAccess = [
   "/perfil",
   "/sign-in",
   "/sign-up",
+  "/empresas",
+  "/obrigado",
+  "/politica-de-privacidade",
 ];
 
 export function GlobalAccountAccess() {
