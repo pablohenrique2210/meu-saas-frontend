@@ -113,7 +113,7 @@ function formatTime(totalSeconds: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
-type ProgressEventType = "PLAYING" | "SEEK" | "PAUSE";
+type ProgressEventType = "PLAY_START" | "PLAYING" | "SEEK" | "PAUSE";
 
 function effectiveMinimumWatchSeconds(lesson: Lesson) {
   if (lesson.type !== "VIDEO") return 0;
@@ -1440,6 +1440,16 @@ export default function TelaDeAula() {
                           setVideoError("Esta aula está temporariamente indisponível.")
                         }
                         onTimeUpdate={handleTimeUpdate}
+                        onPlay={() => {
+                          if (videoRef.current) {
+                            void saveProgressToCloud(
+                              videoRef.current.currentTime,
+                              true,
+                              false,
+                              "PLAY_START",
+                            );
+                          }
+                        }}
                         onSeeking={() => {
                           if (videoRef.current) {
                             void saveProgressToCloud(

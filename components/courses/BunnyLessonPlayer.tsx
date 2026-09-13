@@ -12,7 +12,7 @@ type Player = {
 };
 type PlayerWindow = Window & { playerjs?: { Player: new (iframe: HTMLIFrameElement) => Player } };
 type Playback = { url: string; lastTime: number };
-type ProgressEventType = "PLAYING" | "SEEK" | "PAUSE";
+type ProgressEventType = "PLAY_START" | "PLAYING" | "SEEK" | "PAUSE";
 
 export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
   lessonId: string; title: string; onTime: (
@@ -93,6 +93,7 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
         isPlaying = true;
         previousSeconds = seconds;
         previousSampleAt = performance.now();
+        callback.current(seconds, true, "PLAY_START", inferredPlaybackRate);
       });
       player.on("timeupdate", (event) => {
         if (!active) return;
@@ -123,10 +124,13 @@ export default function BunnyLessonPlayer({ lessonId, title, onTime }: {
         );
       });
       player.on("seeking", () => {
-        if (active) callback.current(seconds, true, "SEEK", inferredPlaybackRate);
+        if (!active) return;
+        isPlaying = false;
+        callback.current(seconds, true, "SEEK", inferredPlaybackRate);
       });
       player.on("seeked", () => {
         if (!active) return;
+        isPlaying = false;
         previousSeconds = seconds;
         previousSampleAt = performance.now();
         callback.current(seconds, true, "SEEK", inferredPlaybackRate);
