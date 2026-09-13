@@ -224,13 +224,13 @@ export default function TelaDeAula() {
   const bunnyTime = useRef(0);
   const lastSavedTime = useRef(0);
   const isSavingProgress = useRef(false);
-  const pendingProgressSave = useRef<{
+  const pendingProgressSaves = useRef<Array<{
     time: number;
     force: boolean;
     requestCompletion: boolean;
     eventType: ProgressEventType;
     playbackRate: number;
-  } | null>(null);
+  }>>([]);
 
   useEffect(() => {
     if (!activeLesson || !user) return;
@@ -545,13 +545,25 @@ export default function TelaDeAula() {
     if (!user || !activeLesson) return false;
     if (isSavingProgress.current) {
       if (force || eventType !== "PLAYING") {
-        pendingProgressSave.current = {
+        const pending = {
           time,
           force,
           requestCompletion,
           eventType,
           playbackRate: currentPlaybackRate,
         };
+        const queue = pendingProgressSaves.current;
+        const previous = queue.at(-1);
+        if (
+          previous &&
+          previous.eventType === eventType &&
+          !previous.requestCompletion &&
+          !requestCompletion
+        ) {
+          queue[queue.length - 1] = pending;
+        } else {
+          queue.push(pending);
+        }
       }
       return false;
     }
@@ -623,8 +635,7 @@ export default function TelaDeAula() {
       return false;
     } finally {
       isSavingProgress.current = false;
-      const pending = pendingProgressSave.current;
-      pendingProgressSave.current = null;
+      const pending = pendingProgressSaves.current.shift();
       if (pending) {
         void saveProgressToCloud(
           pending.time,
