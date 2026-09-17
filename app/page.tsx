@@ -233,7 +233,11 @@ export default function LilianArrudaLandingPage() {
             variants={itemVars}
             className="inline-flex items-center gap-2 bg-white border border-[#E9E0E2] px-4 py-2 rounded-full text-xs font-bold tracking-wide text-[#7D2943] mb-8 shadow-[0_2px_10px_rgba(100,28,50,0.05)]"
           >
-            <span className="text-[#C59A62]">●</span> Inteligência corporativa
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-[#C59A62]"
+              aria-hidden="true"
+            />
+            Inteligência corporativa
             para cuidado humano
           </motion.div>
 

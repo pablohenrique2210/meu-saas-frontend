@@ -1151,9 +1151,14 @@ export default function TelaDeAula() {
                           >
                             {modulo.gameResults.some(
                               (result) => result.gameType === modulo.gameType,
-                            )
-                              ? "✓ Avaliação concluída"
-                              : "Iniciar avaliação do módulo"}
+                            ) ? (
+                              <>
+                                <CheckCircle2 size={16} aria-hidden="true" />
+                                Avaliação concluída
+                              </>
+                            ) : (
+                              "Iniciar avaliação do módulo"
+                            )}
                           </Link>
                         )}
                     </div>
@@ -1304,9 +1309,14 @@ export default function TelaDeAula() {
                       >
                         {modulo.gameResults.some(
                           (result) => result.gameType === modulo.gameType,
-                        )
-                          ? "✓ Avaliação concluída"
-                          : "Iniciar avaliação do módulo"}
+                        ) ? (
+                          <>
+                            <CheckCircle2 size={17} aria-hidden="true" />
+                            Avaliação concluída
+                          </>
+                        ) : (
+                          "Iniciar avaliação do módulo"
+                        )}
                       </Link>
                     )}
                 </div>
@@ -1860,7 +1870,7 @@ export default function TelaDeAula() {
               <div
                 className={`hidden items-center gap-2 rounded-full border px-4 py-2 font-bold sm:flex ${isNightMode ? "border-white/10 bg-white/10 text-rose-200" : "border-[#E9E0E2] bg-[#F5EFEC] text-[#7D2943]"}`}
               >
-                <span>✓</span> Progresso salvo
+                <CheckCircle2 size={17} aria-hidden="true" /> Progresso salvo
               </div>
               <button
                 onClick={handleNextLesson}

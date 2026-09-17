@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import type { GameDiagnosticResult } from "@/lib/game-results-api";
 import { useGameResultSubmission } from "./useGameResultSubmission";
+import { Check } from "lucide-react";
 
 export interface RiskHotspot {
   id: string;
@@ -145,7 +146,7 @@ export function RiskInspectionGame({
                 aspectRatio: "1",
               }}
             >
-              ✓
+              <Check size={16} strokeWidth={3} aria-hidden="true" />
             </span>
           ))}
       </button>

@@ -15,6 +15,7 @@ import {
   Loader2,
   Eye,
   LayoutGrid,
+  ArrowLeft,
   X,
 } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
@@ -204,7 +205,7 @@ export default function AdminDashboard() {
             className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#E9E0E2] bg-white text-[#641C32] transition-colors hover:bg-[#F5EFEC]"
             aria-label="Voltar para o RH"
           >
-            ←
+            <ArrowLeft size={18} aria-hidden="true" />
           </Link>
           <div>
             <h1 className="font-serif text-3xl font-bold text-[#241A1D]">

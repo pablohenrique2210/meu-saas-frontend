@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
-import { BookOpen } from "lucide-react";
+import { ArrowLeft, BookOpen } from "lucide-react";
 import { API_BASE_URL, apiAssetUrl } from "@/lib/api-config";
 
 // Interface de módulos e aulas
@@ -191,7 +191,7 @@ export default function TrilhasPremium() {
               href="/dashboard"
               className="text-xs font-bold uppercase tracking-widest text-[#776A6E] hover:text-[#641C32] transition-colors flex items-center gap-2 mb-4 w-fit"
             >
-              ← Voltar ao Espaço
+              <ArrowLeft size={15} aria-hidden="true" /> Voltar ao Espaço
             </Link>
             <h1 className="font-serif text-4xl lg:text-5xl text-[#241A1D] tracking-tight mb-2">
               Sua jornada de aprendizado

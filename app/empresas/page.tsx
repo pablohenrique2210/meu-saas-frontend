@@ -5,6 +5,7 @@ import BrandLogo from "../BrandLogo";
 import WhatsAppLink from "@/components/WhatsAppLink";
 import MobileWhatsAppCta from "@/components/MobileWhatsAppCta";
 import { siteConfig } from "@/lib/site-config";
+import { Check, ExternalLink } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Saúde Corporativa e NR-1 para Empresas",
@@ -276,7 +277,8 @@ export default function ParaEmpresas() {
                   placement="hero"
                   className="inline-flex items-center justify-center gap-3 rounded-full bg-[#641C32] px-8 py-4 font-bold text-white shadow-[0_18px_36px_-16px_rgba(100,28,50,0.75)] transition-all hover:-translate-y-1 hover:bg-[#7D2943]"
                 >
-                  Falar com a especialista <span aria-hidden="true">↗</span>
+                  Falar com a especialista
+                  <ExternalLink size={17} aria-hidden="true" />
                 </WhatsAppLink>
                 <a
                   href="#sobre"
@@ -362,8 +364,8 @@ export default function ParaEmpresas() {
                     key={item}
                     className="flex gap-3 rounded-2xl border border-[#E9E0E2] bg-[#FAF7F4] p-4 text-sm font-semibold leading-6 text-[#4A3D41]"
                   >
-                    <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#641C32] text-[10px] text-white">
-                      ✓
+                    <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#641C32] text-white">
+                      <Check size={13} strokeWidth={3} aria-hidden="true" />
                     </span>
                     {item}
                   </div>
@@ -658,7 +660,7 @@ export default function ParaEmpresas() {
               rel="noreferrer"
               className="hover:text-[#7D2943]"
             >
-              Site oficial ↗
+              Site oficial <ExternalLink size={14} aria-hidden="true" />
             </a>
           </div>
         </div>

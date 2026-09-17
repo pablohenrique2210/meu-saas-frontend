@@ -52,9 +52,10 @@ A proteção de origem complementa a autenticação; não a substitui.
 
 ## Fluxo
 
-Navegador → POST `/api/bunny/create` com JSON pequeno → Clerk/validação →
-criação de vídeo no Bunny → assinatura SHA-256 limitada ao vídeo e a duas horas →
-envio TUS direto do navegador para `https://video.bunnycdn.com/tusupload`.
+O navegador envia um JSON pequeno para `POST /api/bunny/create`. Depois da
+validação pelo Clerk, o vídeo é criado no Bunny e recebe uma assinatura SHA-256
+limitada ao vídeo e a duas horas. Por fim, o navegador faz o envio TUS direto
+para `https://video.bunnycdn.com/tusupload`.
 
 O corpo contém `title`, `fileName`, `fileType`, `fileSize`. A resposta contém
 `videoId`, `libraryId`, `expirationTime`, `signature`, `requestId`, nunca a API Key.
