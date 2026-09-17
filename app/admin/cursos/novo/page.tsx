@@ -1,6 +1,6 @@
 "use client";
 
-import { CourseEditor } from "../[id]/editar/page";
+import { CourseEditor } from "../CourseEditor";
 
 export default function NewCoursePage() {
   return <CourseEditor courseId={null} />;

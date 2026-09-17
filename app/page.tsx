@@ -51,7 +51,7 @@ const navigationLinks = [
 // ==========================================
 // 1. NAVBAR — leve, premium, item ativo em bordô
 // ==========================================
-export function NavigationMenu() {
+function NavigationMenu() {
   const pathname = usePathname();
 
   return (

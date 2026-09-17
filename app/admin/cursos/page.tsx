@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
 import { apiUrl } from "@/lib/api-config";
-import { CourseEditor } from "./[id]/editar/page";
+import { CourseEditor } from "./CourseEditor";
 
 interface Course {
   id: string;
@@ -53,7 +53,7 @@ export default function AdminDashboard() {
     type: "success",
   });
 
-  // 🚀 ESTADO DO NOSSO NOVO MODAL PREMIUM
+  // Estado do modal de confirmação
   const [courseToDelete, setCourseToDelete] = useState<{
     id: string;
     title: string;
@@ -84,7 +84,7 @@ export default function AdminDashboard() {
     fetchCourses();
   }, []);
 
-  // 🚀 FUNÇÃO QUE CONFIRMA A EXCLUSÃO
+  // Confirma a exclusão
   const confirmDelete = async () => {
     if (!courseToDelete) return;
     try {
@@ -120,7 +120,7 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* 🚀 MODAL PREMIUM DE CONFIRMAÇÃO */}
+      {/* Modal de confirmação */}
       <AnimatePresence>
         {courseToDelete && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">

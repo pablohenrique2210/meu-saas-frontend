@@ -3,9 +3,8 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { BookOpen, Loader2 } from "lucide-react";
+import { BookOpen, House, Loader2, Rocket } from "lucide-react";
 
-// 🚀 IMPORT CORRIGIDO: O "../" faz o código sair da pasta dashboard e encontrar o botão na pasta app!
 import BotaoPerfil from "../BotaoPerfil";
 import BrandLogo from "../BrandLogo";
 import { apiUrl } from "@/lib/api-config";
@@ -223,13 +222,15 @@ export default function DashboardColaborador() {
             href="/dashboard"
             className="text-[#241A1D] bg-[#F5EFEC] px-4 py-3.5 rounded-2xl flex items-center gap-3 shadow-sm border border-[#E9E0E2]"
           >
-            <span className="text-[#641C32]">🏠</span> Meu Espaço
+            <House size={18} className="text-[#641C32]" aria-hidden="true" />
+            Meu Espaço
           </Link>
           <Link
             href="/trilhas"
             className="text-[#776A6E] hover:bg-[#FAF7F4] hover:text-[#241A1D] px-4 py-3.5 rounded-2xl flex items-center gap-3 transition-colors"
           >
-            <span className="opacity-70">📚</span> Trilhas de Estudo
+            <BookOpen size={18} className="opacity-70" aria-hidden="true" />
+            Trilhas de Estudo
           </Link>
         </nav>
       </aside>
@@ -341,8 +342,8 @@ export default function DashboardColaborador() {
           {cursoEmAndamento ? (
             <div className="bg-white p-8 rounded-3xl shadow-[0_8px_30px_rgba(100,28,50,0.06)] border border-[#E9E0E2] flex flex-col md:flex-row justify-between items-center gap-6 transform transition-transform hover:-translate-y-1 duration-300">
               <div className="flex items-center gap-6 w-full md:w-auto">
-                <div className="w-16 h-16 shrink-0 rounded-2xl bg-[#F5EFEC] flex items-center justify-center text-3xl shadow-inner border border-[#E9E0E2]">
-                  🚀
+                <div className="w-16 h-16 shrink-0 rounded-2xl bg-[#F5EFEC] flex items-center justify-center text-[#641C32] shadow-inner border border-[#E9E0E2]">
+                  <Rocket size={28} strokeWidth={1.8} aria-hidden="true" />
                 </div>
                 <div className="overflow-hidden">
                   <h4 className="font-serif text-2xl text-[#241A1D] mb-1 truncate">

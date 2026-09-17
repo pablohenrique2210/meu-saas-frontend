@@ -214,10 +214,10 @@ export default function TelaDeAula() {
   >("idle");
   const [playbackRate, setPlaybackRate] = useState(1);
 
-  // 🚀 Modal de contato com a consultora (botão "Dúvidas?")
+  // Modal de contato com a consultora (botão "Dúvidas?")
   const [isSupportOpen, setIsSupportOpen] = useState(false);
 
-  // 🚀 NOVO ESTADO: Lista de IDs de aulas que o aluno já terminou
+  // Lista de IDs de aulas que o aluno já terminou
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -654,7 +654,7 @@ export default function TelaDeAula() {
     }
   };
 
-  // 🚀 AÇÃO DE CONCLUIR AULA E DESTRANCAR A PRÓXIMA
+  // Ação de concluir aula e destrancar a próxima
   const handleMarkAsCompleted = async () => {
     if (!user || !activeLesson) return;
     if (quizRequired && !quizCompleted) {
@@ -1217,7 +1217,7 @@ export default function TelaDeAula() {
                         onClick={() =>
                           isUnlocked && handleLessonChange(modulo, lesson)
                         }
-                        disabled={!isUnlocked} // 👈 Impede o clique se estiver trancado
+                        disabled={!isUnlocked} // Impede o clique se estiver trancado
                         className={`w-full text-left p-3 rounded-2xl flex items-start gap-3 transition-all duration-300
                           ${
                             isCurrent

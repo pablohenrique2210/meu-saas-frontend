@@ -6,7 +6,7 @@ import { useAuth } from "@clerk/nextjs";
 import { BookOpen } from "lucide-react";
 import { API_BASE_URL, apiAssetUrl } from "@/lib/api-config";
 
-// 🚀 1. INTERFACE CORRIGIDA (Separamos Módulos de Aulas)
+// Interface de módulos e aulas
 interface Course {
   id: string;
   title: string;
@@ -95,7 +95,7 @@ export default function TrilhasPremium() {
           : [];
 
         const formattedCourses: Course[] = coursesData.map((course) => {
-          // 🚀 2. MATEMÁTICA À PROVA DE BALAS PARA STATUS E MÓDULOS
+          // Cálculo de status e módulos
           const modulesCount = course.modules?.length || 0;
           const courseLessonIds =
             course.modules?.flatMap((module) =>
@@ -164,7 +164,7 @@ export default function TrilhasPremium() {
     fetchCoursesAndProgress();
   }, [getToken, isSignedIn]);
 
-  // 🚀 3. PESQUISA INTELIGENTE (Não quebra e pesquisa em todo o lado)
+  // Pesquisa de cursos e módulos
   const trilhasFiltradas = trilhas.filter((trilha) => {
     const matchesFilter =
       activeFilter === "todos" || trilha.status === activeFilter;

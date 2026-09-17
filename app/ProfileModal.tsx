@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth, useUser } from "@clerk/nextjs";
 import Link from "next/link";
+import { BookOpen, TrendingUp, UserRound } from "lucide-react";
 import { API_BASE_URL } from "@/lib/api-config";
 
 // ==========================================
@@ -228,7 +229,11 @@ export default function ProfileModal({
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <span className="text-3xl">👨‍💻</span>
+                          <UserRound
+                            size={34}
+                            className="text-[#641C32]"
+                            aria-hidden="true"
+                          />
                         )}
                       </div>
                     </div>
@@ -248,7 +253,11 @@ export default function ProfileModal({
                         "Perfil autenticado"}
                     </p>
                     <div className="inline-flex items-center gap-2 bg-white/60 backdrop-blur-md px-4 py-2 rounded-xl border border-white shadow-sm">
-                      <span className="text-lg">👏</span>
+                      <TrendingUp
+                        size={18}
+                        className="text-[#641C32]"
+                        aria-hidden="true"
+                      />
                       <p className="text-sm font-semibold text-[#241A1D]">
                         {platformProgress > 0
                           ? `Progresso atual: ${platformProgress}%`
@@ -358,7 +367,11 @@ export default function ProfileModal({
                         </Link>
                       ) : (
                         <div className="bg-slate-50 p-4 rounded-2xl border border-dashed border-slate-200 flex flex-col justify-center items-center text-center h-32">
-                          <span className="text-xl mb-1 opacity-50">🍃</span>
+                          <BookOpen
+                            size={20}
+                            className="mb-1 text-slate-400"
+                            aria-hidden="true"
+                          />
                           <p className="text-sm font-bold text-slate-400">
                             Nenhum curso iniciado.
                           </p>

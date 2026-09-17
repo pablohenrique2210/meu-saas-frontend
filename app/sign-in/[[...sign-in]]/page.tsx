@@ -4,7 +4,7 @@ import BrandLogo from "../../BrandLogo";
 export default function SignInPage() {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#FAF7F4]">
-      {/* 🌿 Lado Esquerdo - Emocional (Oculto no Mobile) */}
+      {/* Lado esquerdo - emocional (oculto no mobile) */}
       <div className="hidden md:flex md:w-1/2 relative flex-col justify-between p-12 lg:p-24 overflow-hidden bg-[#641C32]">
         {/* Elementos Decorativos Abstratos (Luz e Natureza) */}
         <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#641C32] to-[#7D2943] z-0"></div>
@@ -32,7 +32,7 @@ export default function SignInPage() {
         </div>
       </div>
 
-      {/* 🔐 Lado Direito - Funcional (Login Clerk Customizado) */}
+      {/* Lado direito - funcional (login Clerk customizado) */}
       <div className="w-full md:w-1/2 flex items-center justify-center p-6 sm:p-12 bg-[#FAF7F4] relative">
         {/* Efeito de brilho suave atrás do card */}
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-gradient-radial from-[#F5EFEC] to-transparent opacity-50 pointer-events-none"></div>
