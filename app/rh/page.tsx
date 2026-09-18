@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import {
   Activity,
   BookOpen,
   Building2,
+  CheckCircle2,
   ChevronRight,
   Clock3,
   FileBarChart,
@@ -16,8 +17,10 @@ import {
   Search,
   SlidersHorizontal,
   Trash2,
+  TriangleAlert,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import ProfileModal from "../ProfileModal";
 import BrandLogo from "../BrandLogo";
@@ -115,6 +118,12 @@ export default function DashboardRH() {
   const [sharingInvitationId, setSharingInvitationId] = useState<string | null>(
     null,
   );
+  const [invitationToRevoke, setInvitationToRevoke] =
+    useState<EmployeeInvitation | null>(null);
+  const [revokingInvitationId, setRevokingInvitationId] = useState<
+    string | null
+  >(null);
+  const [invitationNotice, setInvitationNotice] = useState<string | null>(null);
 
   const canManageUsers =
     profile?.role === "ADMIN" || profile?.role === "HR_MANAGER";
@@ -335,22 +344,33 @@ export default function DashboardRH() {
     setSelectedEmployee(null);
   };
 
-  const handleRevokeInvitation = async (inviteId: string) => {
+  const handleRevokeInvitation = async () => {
+    if (!invitationToRevoke) return;
+
+    const invitation = invitationToRevoke;
+    setRevokingInvitationId(invitation.id);
     setUsersError(null);
     try {
       const token = await getToken({ skipCache: true });
       if (!token) throw new Error("A sessão não forneceu um token de acesso.");
-      await revokeEmployeeInvitation(token, inviteId);
+      await revokeEmployeeInvitation(token, invitation.id);
       setInvitations((current) =>
         current.map((invitation) =>
-          invitation.id === inviteId
+          invitation.id === invitationToRevoke.id
             ? { ...invitation, status: "REVOKED" }
             : invitation,
         ),
       );
+      setInvitationToRevoke(null);
+      setInvitationNotice(
+        `O convite de ${invitation.name} foi cancelado com sucesso.`,
+      );
+      window.setTimeout(() => setInvitationNotice(null), 5000);
       await loadUsers();
     } catch (error) {
       setUsersError(userFacingError(error, "Não foi possível cancelar o convite agora."));
+    } finally {
+      setRevokingInvitationId(null);
     }
   };
 
@@ -500,6 +520,89 @@ export default function DashboardRH() {
 
   return (
     <div className="flex h-screen bg-[#FAF7F4] font-sans text-[#241A1D] antialiased selection:bg-[#641C32] selection:text-white overflow-hidden">
+      <AnimatePresence>
+        {invitationNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            role="status"
+            aria-live="polite"
+            className="fixed left-1/2 top-5 z-[220] flex w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 items-center gap-3 rounded-2xl border border-emerald-200 bg-white px-5 py-4 text-sm font-semibold text-emerald-800 shadow-2xl"
+          >
+            <CheckCircle2 size={20} className="shrink-0" aria-hidden="true" />
+            <span className="flex-1">{invitationNotice}</span>
+            <button
+              type="button"
+              onClick={() => setInvitationNotice(null)}
+              aria-label="Fechar aviso"
+              className="rounded-full p-1 text-emerald-700 transition hover:bg-emerald-50"
+            >
+              <X size={17} aria-hidden="true" />
+            </button>
+          </motion.div>
+        )}
+
+        {invitationToRevoke && (
+          <div className="fixed inset-0 z-[210] flex items-center justify-center p-4">
+            <motion.button
+              type="button"
+              aria-label="Fechar confirmação"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              disabled={revokingInvitationId === invitationToRevoke.id}
+              onClick={() => setInvitationToRevoke(null)}
+              className="absolute inset-0 bg-[#241A1D]/55 backdrop-blur-sm"
+            />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="revoke-invitation-title"
+              initial={{ opacity: 0, scale: 0.96, y: 18 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 18 }}
+              className="relative w-full max-w-md rounded-[28px] border border-[#E9E0E2] bg-white p-7 shadow-2xl"
+            >
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-[#FCE8E6] text-[#A50E0E]">
+                <TriangleAlert size={23} aria-hidden="true" />
+              </div>
+              <h2
+                id="revoke-invitation-title"
+                className="font-serif text-2xl text-[#241A1D]"
+              >
+                Cancelar este convite?
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-[#776A6E]">
+                O convite enviado para <strong>{invitationToRevoke.email}</strong>{" "}
+                deixará de funcionar. Para conceder acesso novamente, será
+                necessário criar um novo convite.
+              </p>
+              <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={revokingInvitationId === invitationToRevoke.id}
+                  onClick={() => setInvitationToRevoke(null)}
+                  className="rounded-full border border-[#DED4D7] px-5 py-3 text-sm font-bold text-[#4A3D41] transition hover:bg-[#FAF7F4] disabled:cursor-wait disabled:opacity-60"
+                >
+                  Manter convite
+                </button>
+                <button
+                  type="button"
+                  disabled={revokingInvitationId === invitationToRevoke.id}
+                  onClick={() => void handleRevokeInvitation()}
+                  className="rounded-full bg-[#A50E0E] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#8B0B0B] disabled:cursor-wait disabled:opacity-60"
+                >
+                  {revokingInvitationId === invitationToRevoke.id
+                    ? "Cancelando..."
+                    : "Cancelar convite"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* SIDEBAR CORPORATIVA */}
       <aside className="z-20 hidden w-64 flex-col justify-between border-r border-[#E9E0E2] bg-white shadow-[4px_0_24px_rgb(0,0,0,0.02)] lg:flex">
         <div className="p-6">
@@ -877,10 +980,9 @@ export default function DashboardRH() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  void handleRevokeInvitation(invitation.id)
-                                }
-                                className="text-xs font-semibold text-[#A50E0E] hover:underline"
+                                disabled={revokingInvitationId === invitation.id}
+                                onClick={() => setInvitationToRevoke(invitation)}
+                                className="text-xs font-semibold text-[#A50E0E] hover:underline disabled:cursor-wait disabled:opacity-60"
                               >
                                 Cancelar convite
                               </button>

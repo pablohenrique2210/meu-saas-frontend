@@ -342,7 +342,8 @@ export default function ParaEmpresas() {
                 Sobre a especialista
               </p>
               <h2 className="mt-4 max-w-2xl font-serif text-4xl leading-tight tracking-tight sm:text-5xl">
-                Saúde, educação e estratégia conduzidas com proximidade.
+                Especialista em Saúde Corporativa. Estratégia em educação.
+                Desenvolvimento humano na liderança.
               </h2>
               <div className="mt-7 space-y-5 text-lg leading-8 text-[#776A6E]">
                 <p>
